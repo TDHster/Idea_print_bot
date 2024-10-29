@@ -77,40 +77,41 @@ async def process_order_number(message: types.Message, state: FSMContext):
 # Хэндлер для получения фотографий как документ
 @dp.message(F.content_type.in_({"document"}), OrderStates.waiting_for_photos)
 async def process_photo(message: types.Message, state: FSMContext):
-    # Проверка, что файл был отправлен как документ
-    # if message.document:
-    # Получаем информацию о файле
-    file_id = message.document.file_id
-    file_extension = message.document.file_name.split('.')[-1]
-
-    # Получаем путь к папке заказа из состояния
+    # Получаем данные о состоянии
     data = await state.get_data()
     order_folder = data['order_folder']
     number_of_photos = data['number_of_photos']
-    uploaded_photos = data['uploaded_photos']
+    uploaded_photos = data.get('uploaded_photos', 0)  # Получаем текущее количество загруженных фотографий
     order_number = data['order_number']
-    
-    # Путь для сохранения файла
-    file_path = order_folder / message.document.file_name
-    
-    # Скачиваем и сохраняем файл
-    file_info = await bot.get_file(file_id)
-    await bot.download_file(file_info.file_path, file_path)
-    
-    jpeg_path = convert_to_jpeg(file_path)
-    
-    # Получаем соотношение сторон
-    aspect_ratio = get_aspect_ratio(jpeg_path)
-    
-    uploaded_photos += 1
-    logger.info(f"Photo saved for user {message.from_user.id} at {file_path} {uploaded_photos} of {number_of_photos}")
-    await message.answer(f"Файл {uploaded_photos} из {number_of_photos} получен. Aspect ratio: {aspect_ratio:0.1f} Жду еще.")
-    await state.update_data(uploaded_photos=uploaded_photos)
-    if uploaded_photos == number_of_photos:
+
+    # Получаем список документов
+    documents = message.document if isinstance(message.document, list) else [message.document]
+
+    for document in documents:
+        if document:
+            file_id = document.file_id  # Получаем file_id
+            file_path = order_folder / document.file_name  # Определяем путь для сохранения файла
+            
+            # Скачиваем и сохраняем файл
+            file_info = await bot.get_file(file_id)
+            await bot.download_file(file_info.file_path, file_path)
+            
+            # Конвертируем в JPEG, если это необходимо
+            jpeg_path = convert_to_jpeg(file_path)
+
+            # Получаем соотношение сторон
+            aspect_ratio = get_aspect_ratio(jpeg_path)
+
+            # Увеличиваем счетчик загруженных фотографий
+            uploaded_photos += 1
+            logger.info(f"Photo saved for user {message.from_user.id} at {file_path}. {uploaded_photos} of {number_of_photos} uploaded.")
+            await message.answer(f"Файл {uploaded_photos} из {number_of_photos} получен. Aspect ratio: {aspect_ratio:0.1f}. Жду еще.")
+
+    # Проверяем, завершен ли процесс загрузки фотографий
+    if uploaded_photos >= number_of_photos:
         await state.set_state(OrderStates.order_complete)
 
         logger.info(f"All photos for order {order_number} by {message.from_user.id} uploaded.")
-        # await message.answer(f"Все файлы для заказа {order_number} загружены.")
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -121,6 +122,8 @@ async def process_photo(message: types.Message, state: FSMContext):
         )
         await message.answer(f"Все файлы для заказа {order_number} загружены.", reply_markup=keyboard)
 
+    # Обновляем состояние с новым значением загруженных фотографий
+    await state.update_data(uploaded_photos=uploaded_photos)
         
 @dp.message(F.content_type.in_({"text", 'photo'}), OrderStates.waiting_for_photos)
 async def process_photo_wrong_type(message: types.Message, state: FSMContext):
