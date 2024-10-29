@@ -3,6 +3,7 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
+from aiogram.client.default import DefaultBotProperties
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -26,7 +27,7 @@ BOT_TOKEN = config['BOT_API']
 BASE_PATH = Path(config['BASE_ORDER_PATH'])  # Основной путь к папке для заказов из .env
 
 # Создаем бота и диспетчер
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
@@ -42,7 +43,7 @@ class OrderStates(StatesGroup):
 @dp.message(Command(commands=["start"]))
 async def cmd_start(message: types.Message, state: FSMContext):
     logger.info(f"User {message.from_user.id} started a session.")
-    await message.answer("Вас приветствует система приемки заказов Идея Принт.")
+    await message.answer("Вас приветствует система приемки заказов <b>Идея Принт</b>.")
     await message.answer("Введите номер вашего заказа:")
     await state.set_state(OrderStates.waiting_for_order_number)
 
@@ -66,11 +67,18 @@ async def process_order_number(message: types.Message, state: FSMContext):
     await state.update_data(order_number=order_number, order_folder=order_folder, 
                             number_of_photos=number_of_photos, uploaded_photos=0)
     logger.info(f"Order folder created: {order_folder}")
-    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}")
+            ]
+        ]
+    )
     await message.answer(
         f"Отправляйте мне фотографии, которые хотите напечатать в альбоме.\n"
         f"У вас {number_of_photos} фотографий для загрузки.\n"
-        f"Пожалуйста, отправляйте фотографии как файлы, чтобы избежать потери качества."
+        f"<i>Пожалуйста, отправляйте фотографии как файлы, чтобы избежать потери качества.</i>", 
+        reply_markup=keyboard
     )
     await state.set_state(OrderStates.waiting_for_photos)
 
@@ -105,7 +113,17 @@ async def process_photo(message: types.Message, state: FSMContext):
             # Увеличиваем счетчик загруженных фотографий
             uploaded_photos += 1
             logger.info(f"Photo saved for user {message.from_user.id} at {file_path}. {uploaded_photos} of {number_of_photos} uploaded.")
-            await message.answer(f"Файл {uploaded_photos} из {number_of_photos} получен. Aspect ratio: {aspect_ratio:0.1f}. Жду еще.")
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}")
+                    ]
+                ]
+            )
+            await message.answer(f"Файл {uploaded_photos} из {number_of_photos} получен.\n"
+                                 f"Aspect ratio: {aspect_ratio:0.1f}.\n"
+                                 f"Жду еще.",
+                                 reply_markup=keyboard)
 
     # Проверяем, завершен ли процесс загрузки фотографий
     if uploaded_photos >= number_of_photos:
@@ -147,9 +165,11 @@ async def process_print_order(callback: CallbackQuery, state: FSMContext):
 async def process_cancel_order(callback: CallbackQuery, state: FSMContext):
     order_number = callback.data.split(":")[1]
     logger.info(f"Order {order_number} canceled by user {callback.from_user.id}")
+    state.set_state(OrderStates.waiting_for_order_number)
     #todo folder and states remove logic
-    await callback.message.answer("Заказ отменен.")
+    await callback.message.answer("Данные заказа сброшены.")
     await callback.answer()
+    await cmd_start(callback.message, state)
     
 
 # Запуск бота

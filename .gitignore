@@ -1,3 +1,4 @@
 .env
 venv
 orders/*
+__pycache__
