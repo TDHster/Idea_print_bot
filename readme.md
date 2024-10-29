@@ -1,4 +1,4 @@
-# Photo Print Bot
+# Photo Print shop helper Bot
 
 ## Description
 
@@ -15,7 +15,7 @@ The Photo Print Bot is a Telegram bot designed to facilitate the collection and 
 
 ## Installation
 
-####Clone the repository:
+#### Clone the repository:
    ```bash
    git clone https://github.com/yourusername/photo-print-bot.git
 Navigate to the project directory:
