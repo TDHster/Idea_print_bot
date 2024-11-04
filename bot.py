@@ -1,5 +1,6 @@
 # main.py
 import asyncio
+import aiohttp
 import logging
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Загружаем переменные окружения
 config = dotenv_values(".env")
 BOT_TOKEN = config['BOT_API']
+API_URL = config['API_URL']
 BASE_PATH = Path(config['BASE_ORDER_PATH'])  # Основной путь к папке для заказов из .env
 
 # Создаем бота и диспетчер
@@ -52,35 +54,41 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def process_order_number(message: types.Message, state: FSMContext):
     order_number = message.text
     logger.info(f"User {message.from_user.id} entered order number: {order_number}")
-   
-    # data = await state.get_data()
-    # order_folder = data['order_folder'] 
     
-    # Пример данных о заказе (например, через запрос к 1С)
-    number_of_photos = 2  # TODO: заменить на реальное значение из ответа 1С
-    # Генерация пути к подпапке на основе текущей даты и номера заказа
-    current_date = date.today().strftime("%Y-%m-%d")
-    order_folder = BASE_PATH / current_date / f"{order_number}_Новый"
-    order_folder.mkdir(parents=True, exist_ok=True)  
-    
-    # Сохраняем данные заказа в состоянии
-    await state.update_data(order_number=order_number, order_folder=order_folder, 
-                            number_of_photos=number_of_photos, uploaded_photos=0)
-    logger.info(f"Order folder created: {order_folder}")
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}")
-            ]
-        ]
-    )
-    await message.answer(
-        f"Отправляйте мне фотографии, которые хотите напечатать в альбоме.\n"
-        f"У вас {number_of_photos} фотографий для загрузки.\n"
-        f"<i>Пожалуйста, отправляйте фотографии как файлы, чтобы избежать потери качества.</i>", 
-        reply_markup=keyboard
-    )
-    await state.set_state(OrderStates.waiting_for_photos)
+    # Запрос к API-серверу для получения данных о заказе
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"{API_URL}{order_number}") as response:
+            if response.status == 200:
+                data = await response.json()
+                print(f'{data}')
+                if data["result"]:
+                    number_of_photos = data["quantity"]
+                    order_folder = Path(data["path"])
+                    order_folder.mkdir(parents=True, exist_ok=True)
+                    
+                    # Сохраняем данные заказа в состоянии
+                    await state.update_data(order_number=order_number, order_folder=order_folder, 
+                                            number_of_photos=number_of_photos, uploaded_photos=0)
+                    logger.info(f"Order folder created: {order_folder}")
+                    keyboard = InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}")
+                            ]
+                        ]
+                    )
+                    await message.answer(
+                        f"Отправляйте мне фотографии, которые хотите напечатать в альбоме.\n"
+                        f"У вас {number_of_photos} фотографий для загрузки.\n"
+                        f"<i>Пожалуйста, отправляйте фотографии как файлы, чтобы избежать потери качества.</i>", 
+                        reply_markup=keyboard
+                    )
+                    await state.set_state(OrderStates.waiting_for_photos)
+                else:
+                    await message.answer(f"Заказ с номером {order_number} не найден.")
+            else:
+                logger.info(f"API 1c return answer: {response.status}")
+                await message.answer("Произошла ошибка при запросе данных о заказе.")
 
 # Хэндлер для получения фотографий как документ
 @dp.message(F.content_type.in_({"document"}), OrderStates.waiting_for_photos)
@@ -165,7 +173,7 @@ async def process_print_order(callback: CallbackQuery, state: FSMContext):
 async def process_cancel_order(callback: CallbackQuery, state: FSMContext):
     order_number = callback.data.split(":")[1]
     logger.info(f"Order {order_number} canceled by user {callback.from_user.id}")
-    state.set_state(OrderStates.waiting_for_order_number)
+    await state.set_state(OrderStates.waiting_for_order_number)
     #todo folder and states remove logic
     await callback.message.answer("Данные заказа сброшены.")
     await callback.answer()
