@@ -9,15 +9,9 @@ photo_files = sorted([f for f in photos_dir.glob("*") if f.suffix.lower() in ['.
 
 # Размер коллажа
 collage_width = 1280
+font_size_percent = 0.2  # of photo
+bg_col_byte = 200  # background color if base image
 
-# Шрифт для порядковых номеров
-font_name = "Arial.ttf"
-try:
-    font = ImageFont.truetype(font_name, 100)
-except OSError:
-    # Если шрифт Arial.ttf не найден, используем встроенный шрифт
-    font = ImageFont.load_default()
-    print(f'Using default font {font}')
 
 # Определяем количество строк и столбцов
 num_photos = len(photo_files)
@@ -28,9 +22,18 @@ num_rows = (num_photos + num_cols - 1) // num_cols  # Округляем вве�
 photo_width = collage_width // num_cols
 photo_height = photo_width  # Мы делаем фотографии квадратными
 
+# Шрифт для порядковых номеров
+font_name = "Arial.ttf"
+try:
+    font = ImageFont.truetype(font_name, int(photo_width * font_size_percent))
+except OSError:
+    # Если шрифт Arial.ttf не найден, используем встроенный шрифт
+    font = ImageFont.load_default()
+    print(f'Using default font {font}')
+
+
 # Создаем новое изображение для коллажа
 collage_height = num_rows * photo_height
-bg_col_byte = 260
 collage = Image.new('RGB', (collage_width, collage_height), (bg_col_byte, bg_col_byte, bg_col_byte))
 
 # Координаты для размещения фотографий
@@ -62,7 +65,7 @@ for i, photo_file in enumerate(photo_files):
     # Добавляем порядковый номер на фотографию
     draw = ImageDraw.Draw(resized_photo)
     text_color = (255, 255, 255)  # Белый цвет текста (или черный, если необходимо)
-    text_position = (50, resized_photo.height - 120)
+    text_position = (int(resized_photo.width/2), resized_photo.height - int(resized_photo.height * font_size_percent))
     draw.text(text_position, f"{i+1}", font=font, fill=text_color)
     
     # Размещаем фотографию на коллаже
