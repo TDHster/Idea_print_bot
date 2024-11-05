@@ -12,7 +12,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import dotenv_values
 from pathlib import Path
 from datetime import date
-from helpers import get_aspect_ratio, convert_to_jpeg
+from helpers import get_aspect_ratio, convert_to_jpeg, estimate_blur, calculate_md5
 import shutil
 
 
@@ -127,6 +127,8 @@ async def process_photo(message: types.Message, state: FSMContext):
 
             # Получаем соотношение сторон
             aspect_ratio = get_aspect_ratio(jpeg_path)
+            blur = estimate_blur(jpeg_path)
+            md5_hash = calculate_md5(jpeg_path)
 
             # Увеличиваем счетчик загруженных фотографий
             uploaded_photos += 1
@@ -140,6 +142,8 @@ async def process_photo(message: types.Message, state: FSMContext):
             )
             await message.answer(f"Файл {uploaded_photos} из {number_of_photos} получен.\n"
                                  f"Aspect ratio: {aspect_ratio:0.1f}.\n"
+                                 f"Коэффициент размытия фото: {blur}"
+                                 f"MD5: {md5_hash}"
                                  f"Жду еще.",
                                  reply_markup=keyboard)
 
