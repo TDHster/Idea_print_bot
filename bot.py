@@ -89,7 +89,7 @@ async def process_order_number(message: types.Message, state: FSMContext):
                     await message.answer(
                         f"Отправляйте мне фотографии, которые хотите напечатать в альбоме.\n"
                         f"У вас {number_of_photos} фотографий для загрузки.\n"
-                        f"<i>Пожалуйста, отправляйте фотографии как файлы, чтобы избежать потери качества.</i>", 
+                        f"<i>Только чтобы мессенджер не ухудшил качество фотографии присылайте её в виде файла. Сейчас пришлю инструкцию как это сделать</i>", 
                         reply_markup=keyboard
                     )
                     await state.set_state(OrderStates.waiting_for_photos)
@@ -97,7 +97,7 @@ async def process_order_number(message: types.Message, state: FSMContext):
                     await message.answer(f"Заказ с номером {order_number} не найден.")
             else:
                 logger.info(f"API 1c return answer: {response.status}")
-                await message.answer("Произошла ошибка при запросе данных о заказе.")
+                await message.answer("Приношу свои извинения, у нас технический сбой.\nПопробуйте позже или свяжитесь с нашим менеджером по телефону 495 2223322")
 
 
 # Хэндлер для получения фотографий как документ
@@ -163,8 +163,8 @@ async def process_photo(message: types.Message, state: FSMContext):
         
 @dp.message(F.content_type.in_({"text", 'photo'}), OrderStates.waiting_for_photos)
 async def process_photo_wrong_type(message: types.Message, state: FSMContext):
-    await message.answer("Пожалуйста, отправьте фото в виде файла для сохранения качества.")
-    logger.warning(f"User {message.from_user.id} sent an image without file format.")
+    await message.answer("Вы отправили фото не файлом, а изображением. Качество будет хуже. Продолжить/Отменить/Больше не спрашивать")
+    logger.warning(f"User {message.from_user.id} sent an image not as file.")
 
 
 # Хэндлер для обработки callback "Отправить в печать"
