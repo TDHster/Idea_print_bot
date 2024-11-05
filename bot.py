@@ -13,6 +13,8 @@ from dotenv import dotenv_values
 from pathlib import Path
 from datetime import date
 from helpers import get_aspect_ratio, convert_to_jpeg
+import shutil
+
 
 
 # Настройка логирования
@@ -26,7 +28,8 @@ logger = logging.getLogger(__name__)
 config = dotenv_values(".env")
 BOT_TOKEN = config['BOT_API']
 API_URL = config['API_URL']
-BASE_PATH = Path(config['BASE_ORDER_PATH'])  # Основной путь к папке для заказов из .env
+# BASE_PATH = Path(config['BASE_ORDER_PATH'])  # Основной путь к папке для заказов из .env
+ALLOWED_PATH = config['ALLOWED_PATH']  # для проверки чтобы не перезаписать что-нибудь.
 
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
@@ -64,6 +67,12 @@ async def process_order_number(message: types.Message, state: FSMContext):
                 if data["result"]:
                     number_of_photos = data["quantity"]
                     order_folder = Path(data["path"])
+                    if not str(order_folder).startswith(ALLOWED_PATH):
+                        await message.answer("Ошибка программы. Получен неверный путь к папке заказа.")
+                        await state.set_state(OrderStates.waiting_for_order_number)
+                        await state.finish()
+                        return
+ 
                     order_folder.mkdir(parents=True, exist_ok=True)
                     
                     # Сохраняем данные заказа в состоянии
@@ -89,6 +98,7 @@ async def process_order_number(message: types.Message, state: FSMContext):
             else:
                 logger.info(f"API 1c return answer: {response.status}")
                 await message.answer("Произошла ошибка при запросе данных о заказе.")
+
 
 # Хэндлер для получения фотографий как документ
 @dp.message(F.content_type.in_({"document"}), OrderStates.waiting_for_photos)
@@ -166,6 +176,9 @@ async def process_print_order(callback: CallbackQuery, state: FSMContext):
     await callback.answer(f"Это сообщение для менеджера.\n"
                          f"Заказ {order_number} собран и подтверджен, надо печатать.") #flash message
     await callback.answer()
+    await state.reset_data()  # Сброс данных состояния
+    await state.finish()
+    await cmd_start(callback.message, state)
     
 
 # Хэндлер для обработки callback "Отменить"
@@ -174,7 +187,27 @@ async def process_cancel_order(callback: CallbackQuery, state: FSMContext):
     order_number = callback.data.split(":")[1]
     logger.info(f"Order {order_number} canceled by user {callback.from_user.id}")
     await state.set_state(OrderStates.waiting_for_order_number)
-    #todo folder and states remove logic
+    await callback.message.answer("Данные заказа сброшены.")
+    await callback.answer()
+    data = await state.get_data()
+    order_folder = data.get('order_folder')
+    
+    if order_folder:
+        order_folder_path = Path(order_folder)
+        if order_folder_path.exists():
+            try:
+                # Удаляем каталог
+                shutil.rmtree(order_folder_path)
+                logger.info(f"Order folder {order_folder_path} removed.")
+            except Exception as e:
+                logger.error(f"Failed to remove order folder {order_folder_path}: {e}")
+        else:
+            logger.warning(f"Order folder {order_folder_path} does not exist.")
+    
+    # Сбрасываем данные состояния
+    await state.reset_data()
+    # await state.finish()      # Сброс состояния и данных состояния
+    
     await callback.message.answer("Данные заказа сброшены.")
     await callback.answer()
     await cmd_start(callback.message, state)
