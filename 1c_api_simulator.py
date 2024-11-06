@@ -15,7 +15,8 @@ def get_path(order_number: str):
         return {"result": False, "info": "Invalid request format"}
 
     if order_number in orders:
-        path = f"C:\\1C\\папка для заказов\\2024-11-06\\Набор. Альбом А5_озн_{order_number}_Новый"
+        # path = f"C:\\1C\\папка для заказов\\2024-11-06\\Набор. Альбом А5_озн_{order_number}_Новый"
+        path = f"orders/Набор. Альбом А5_озн_{order_number}_Новый"
         quantity = orders[order_number]
         return {"result": True, "path": path, "quantity": quantity}
     else:

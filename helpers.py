@@ -4,21 +4,55 @@ from pathlib import Path
 import cv2
 import numpy as np
 import hashlib
+from pillow_heif import register_heif_opener
+
 
 print(cv2.__version__)
 
 
-def convert_to_jpeg(file_path: Path) -> Path:
-    """Конвертирует изображение в JPEG, если оно в другом формате."""
-    with Image.open(file_path) as img:
-        if img.format != 'JPEG':
-            jpeg_path = file_path.with_suffix(".jpg")  # Создаем новый путь с расширением .jpg
-            img = img.convert("RGB")  # Конвертируем в RGB для JPEG
+# def convert_to_jpeg(file_path: Path) -> Path:
+    # """Конвертирует изображение в JPEG, если оно в другом формате."""
+    # with Image.open(file_path) as img:
+    #     if img.format != 'JPEG':
+    #         jpeg_path = file_path.with_suffix(".jpg")  # Создаем новый путь с расширением .jpg
+    #         img = img.convert("RGB")  # Конвертируем в RGB для JPEG
+    #         img.save(jpeg_path, "JPEG")
+    #         # print(f"Изображение сохранено в формате JPEG по пути {jpeg_path}")
+    #         return jpeg_path  # Возвращаем путь к новому JPEG файлу
+    #     # print("Изображение уже в формате JPEG, конвертация не требуется.")
+    #     return file_path  # Возвращаем исходный путь, если конвертация не нужна
+
+
+# Регистрируем HEIF/HEIC открыватель в PIL
+register_heif_opener()
+
+def convert_to_jpeg(file_path):
+    """
+    Конвертирует файл в формат JPEG, если это необходимо, и удаляет исходный файл в случае успешной конвертации.
+
+    :param file_path: Путь к файлу.
+    :return: Путь к конвертированному файлу.
+    """
+    # Преобразуем путь в объект Path
+    file_path = Path(file_path)
+    
+    # Проверяем, является ли файл HEIC
+    if file_path.suffix.lower() in ('.heic', '.heif'):
+        # Открываем файл с помощью PIL
+        with Image.open(file_path) as img:
+            # Создаем путь для сохранения JPEG файла
+            jpeg_path = file_path.with_suffix('.jpg')
+            
+            # Сохраняем изображение в формате JPEG
             img.save(jpeg_path, "JPEG")
-            # print(f"Изображение сохранено в формате JPEG по пути {jpeg_path}")
-            return jpeg_path  # Возвращаем путь к новому JPEG файлу
-        # print("Изображение уже в формате JPEG, конвертация не требуется.")
-        return file_path  # Возвращаем исходный путь, если конвертация не нужна
+            
+            # Удаляем исходный файл
+            file_path.unlink()
+            
+            return jpeg_path
+    else:
+        # Если файл не является HEIC, возвращаем исходный путь
+        return file_path
 
 
 def get_aspect_ratio(file_path: Path) -> float:
@@ -73,32 +107,30 @@ def calculate_md5(file_path):
     return md5_hash.hexdigest()
 
 
-def generate_file_name(uploaded_photos, original_file_name, num_digits=3):
+def generate_file_name(number, original_file_name, num_digits=3):
     """
     Генерирует имя файла в формате "число_оригинальное_имя_файла.расширение".
 
-    :param uploaded_photos: Число загруженных фотографий.
+    :param number: Число загруженных фотографий.
     :param original_file_name: Оригинальное имя файла.
     :param num_digits: Количество знаков, до которых нужно дополнить число нулями (по умолчанию 3).
     :return: Новое имя файла.
     """
     # Дополняем число нулями до указанного количества знаков
-    number_str = f"{uploaded_photos:0{num_digits}d}"
+    number_str = f"{number:0{num_digits}d}"
     
     # Получаем расширение файла
     file_extension = Path(original_file_name).suffix
     
+    # Убираем расширение из оригинального имени файла
+    base_name = Path(original_file_name).stem
+    
     # Формируем новое имя файла
-    new_file_name = f"{number_str}_{original_file_name}{file_extension}"
+    new_file_name = f"{number_str}_{base_name}{file_extension}"
+    
+    print(f'{new_file_name=}')
     
     return new_file_name
-    # # Пример использования
-    # uploaded_photos = 3
-    # original_file_name = "img4312"
-    # file_path = Path("orders/2024-10-29/1_Новый") / generate_file_name(uploaded_photos, original_file_name)
-
-    # print(file_path)  # Вывод: orders/2024-10-29/1_Новый/00003_img4312.jpg
-
 
 def extract_original_file_name(file_path):
     """

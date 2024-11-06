@@ -30,7 +30,8 @@ BOT_TOKEN = config['BOT_API']
 API_URL = config['API_URL']
 # BASE_PATH = Path(config['BASE_ORDER_PATH'])  # Основной путь к папке для заказов из .env
 ALLOWED_PATH = config['ALLOWED_PATH']  # для проверки чтобы не перезаписать что-нибудь.
-PHONE_NUMBER_MANAGER = config['PHONE_NUMBER_MANAGER']
+# PHONE_NUMBER_MANAGER = config['PHONE_NUMBER_MANAGER']
+ERROR_MESSAGE_FOR_USER = config['ERROR_MESSAGE_FOR_USER']
 
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
@@ -45,6 +46,7 @@ class OrderStates(StatesGroup):
     order_complete = State()
     sending_to_print = State()
 
+
 # Хэндлер для команды /start
 @dp.message(Command(commands=["start"]))
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -53,10 +55,13 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer("Введите номер вашего заказа:")
     await state.set_state(OrderStates.waiting_for_order_number)
 
+
 # Хэндлер для номера заказа
 @dp.message(OrderStates.waiting_for_order_number)
 async def process_order_number(message: types.Message, state: FSMContext):
-    order_number = message.text
+    # order_number = message.text
+    order_number = message.text.strip()
+    
     logger.info(f"User {message.from_user.id} entered order number: {order_number}")
     
     # Запрос к API-серверу для получения данных о заказе
@@ -69,9 +74,10 @@ async def process_order_number(message: types.Message, state: FSMContext):
                     number_of_photos = data["quantity"]
                     order_folder = Path(data["path"])
                     if not str(order_folder).startswith(ALLOWED_PATH):
-                        await message.answer("Ошибка программы. Получен неверный путь к папке заказа.")
+                        print(f' {ALLOWED_PATH=} {order_folder=}')
+                        await message.answer(f"Ошибка программы. Получен неверный путь к папке заказа.")
+                        await message.answer(ERROR_MESSAGE_FOR_USER)
                         await state.set_state(OrderStates.waiting_for_order_number)
-                        await state.finish()
                         return
  
                     order_folder.mkdir(parents=True, exist_ok=True)
@@ -90,7 +96,7 @@ async def process_order_number(message: types.Message, state: FSMContext):
                     await message.answer(
                         f"Отправляйте мне фотографии, которые хотите напечатать в альбоме.\n"
                         f"У вас {number_of_photos} фотографий для загрузки.\n"
-                        f"<i>Только чтобы мессенджер не ухудшил качество фотографии присылайте её в виде файла. Сейчас пришлю инструкцию как это сделать</i>", 
+                        f"<i>Чтобы мессенджер не ухудшил качество фотографии присылайте её в виде файла. Сейчас пришлю инструкцию как это сделать</i>", 
                         reply_markup=keyboard
                     )
                     await state.set_state(OrderStates.waiting_for_photos)
@@ -98,7 +104,7 @@ async def process_order_number(message: types.Message, state: FSMContext):
                     await message.answer(f"Заказ с номером {order_number} не найден.")
             else:
                 logger.info(f"API 1c return answer: {response.status}")
-                await message.answer("Приношу свои извинения, у нас технический сбой.\nПопробуйте позже или свяжитесь с нашим менеджером по телефону {PHONE_NUMBER_MANAGER}")
+                await message.answer(ERROR_MESSAGE_FOR_USER)
 
 
 # Хэндлер для получения фотографий как документ
@@ -119,7 +125,9 @@ async def process_photo(message: types.Message, state: FSMContext):
             file_id = document.file_id  # Получаем file_id
             # file_path = Path("orders/2024-10-29/1_Новый") / generate_file_name(uploaded_photos, original_file_name)
 
-            file_path = order_folder / document.file_name  # Определяем путь для сохранения файла
+            filename_with_number = generate_file_name(uploaded_photos, document.file_name)
+            # file_path = order_folder / document.file_name  # Определяем путь для сохранения файла
+            file_path = order_folder / filename_with_number  # Определяем путь для сохранения файла
             
             # Скачиваем и сохраняем файл
             file_info = await bot.get_file(file_id)
@@ -145,9 +153,8 @@ async def process_photo(message: types.Message, state: FSMContext):
             )
             await message.answer(f"Файл {uploaded_photos} из {number_of_photos} получен.\n"
                                  f"Aspect ratio: {aspect_ratio:0.1f}.\n"
-                                 f"Коэффициент размытия фото: {blur}"
-                                 f"MD5: {md5_hash}"
-                                 f"Жду еще.",
+                                 f"Коэффициент размытия фото: {blur:.1f}\n"
+                                 f"MD5: {md5_hash}\n",
                                  reply_markup=keyboard)
 
     # Проверяем, завершен ли процесс загрузки фотографий
@@ -164,13 +171,30 @@ async def process_photo(message: types.Message, state: FSMContext):
             ]
         )
         await message.answer(f"Все файлы для заказа {order_number} загружены.", reply_markup=keyboard)
+    else:
+        await message.answer(f"Жду еще фото.")
 
     # Обновляем состояние с новым значением загруженных фотографий
     await state.update_data(uploaded_photos=uploaded_photos)
+
         
 @dp.message(F.content_type.in_({"text", 'photo'}), OrderStates.waiting_for_photos)
 async def process_photo_wrong_type(message: types.Message, state: FSMContext):
-    await message.answer("Вы отправили фото не файлом, а изображением. Качество будет хуже. Продолжить/Отменить/Больше не спрашивать")
+    data = await state.get_data()
+    order_number = data['order_number']
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Продолжить", callback_data=f"cancel_order:{order_number}"),  # TODO
+                InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}"),
+                InlineKeyboardButton(text="Больше не спрашивать", callback_data=f"cancel_order:{order_number}") # TODO
+            ]
+        ]
+    )
+
+    await message.answer("Вы отправили фото не файлом, а изображением. Качество будет хуже.\n"
+                         f"Продолжить/Отменить/Больше не спрашивать",
+                         reply_markup=keyboard)
     logger.warning(f"User {message.from_user.id} sent an image not as file.")
 
 
@@ -183,7 +207,7 @@ async def process_print_order(callback: CallbackQuery, state: FSMContext):
     await callback.answer(f"Это сообщение для менеджера.\n"
                          f"Заказ {order_number} собран и подтверджен, надо печатать.") #flash message
     await callback.answer()
-    await state.reset_data()  # Сброс данных состояния
+    # await state.reset_data()  # Сброс данных состояния
     await state.finish()
     await cmd_start(callback.message, state)
     
