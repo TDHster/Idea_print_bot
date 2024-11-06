@@ -2,6 +2,7 @@
 import asyncio
 import aiohttp
 import logging
+import shutil
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
@@ -12,8 +13,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import dotenv_values
 from pathlib import Path
 from datetime import date
-from helpers import get_aspect_ratio, convert_to_jpeg, estimate_blur, calculate_md5
-import shutil
+from helpers import get_aspect_ratio, convert_to_jpeg, estimate_blur, calculate_md5, generate_file_name, extract_original_file_name
 
 
 
@@ -30,6 +30,7 @@ BOT_TOKEN = config['BOT_API']
 API_URL = config['API_URL']
 # BASE_PATH = Path(config['BASE_ORDER_PATH'])  # Основной путь к папке для заказов из .env
 ALLOWED_PATH = config['ALLOWED_PATH']  # для проверки чтобы не перезаписать что-нибудь.
+PHONE_NUMBER_MANAGER = config['PHONE_NUMBER_MANAGER']
 
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
@@ -97,7 +98,7 @@ async def process_order_number(message: types.Message, state: FSMContext):
                     await message.answer(f"Заказ с номером {order_number} не найден.")
             else:
                 logger.info(f"API 1c return answer: {response.status}")
-                await message.answer("Приношу свои извинения, у нас технический сбой.\nПопробуйте позже или свяжитесь с нашим менеджером по телефону 495 2223322")
+                await message.answer("Приношу свои извинения, у нас технический сбой.\nПопробуйте позже или свяжитесь с нашим менеджером по телефону {PHONE_NUMBER_MANAGER}")
 
 
 # Хэндлер для получения фотографий как документ
@@ -116,6 +117,8 @@ async def process_photo(message: types.Message, state: FSMContext):
     for document in documents:
         if document:
             file_id = document.file_id  # Получаем file_id
+            # file_path = Path("orders/2024-10-29/1_Новый") / generate_file_name(uploaded_photos, original_file_name)
+
             file_path = order_folder / document.file_name  # Определяем путь для сохранения файла
             
             # Скачиваем и сохраняем файл
