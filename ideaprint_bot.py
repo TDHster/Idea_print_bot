@@ -14,7 +14,7 @@ from dotenv import dotenv_values
 from pathlib import Path
 from datetime import date
 from helpers import get_aspect_ratio, convert_to_jpeg, estimate_blur, calculate_md5, generate_unique_filename, get_original_filename, get_number_photo_files
-
+from config import *
 
 # Настройка логирования
 logging.basicConfig(
@@ -24,16 +24,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Загружаем переменные окружения
-config = dotenv_values(".env")
-BOT_TOKEN = config['BOT_API']
-API_URL = config['API_URL']
-ALLOWED_PATH = config['ALLOWED_PATH']  # для проверки пути сохранения файлов чтобы не перезаписать что-нибудь.
-ERROR_MESSAGE_FOR_USER = config['ERROR_MESSAGE_FOR_USER']
-MANAGER_TELEGRAM_ID = config['MANAGER_TELEGRAM_ID']
-MIN_ASPECT_RATIO=float(config['MIN_ASPECT_RATIO'])
-MAX_ASPECT_RATIO=1/MIN_ASPECT_RATIO
-BLURR_THRESHOLD=float(config['BLURR_THRESHOLD'])
-
+# config = dotenv_values(".env")
+# BOT_TOKEN = config['BOT_API']
+# API_URL = config['API_URL']
+# ALLOWED_PATH = config['ALLOWED_PATH']  # для проверки пути сохранения файлов чтобы не перезаписать что-нибудь.
+# ERROR_MESSAGE_FOR_USER = config['ERROR_MESSAGE_FOR_USER']
+# MANAGER_TELEGRAM_ID = config['MANAGER_TELEGRAM_ID']
+# MIN_ASPECT_RATIO=float(config['MIN_ASPECT_RATIO'])
+# MAX_ASPECT_RATIO=1/MIN_ASPECT_RATIO
+# BLURR_THRESHOLD=float(config['BLURR_THRESHOLD'])
+# FORMAT_FOR_CONVERSION = config['BLURR_THRESHOLD']
+ 
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
 storage = MemoryStorage()
@@ -242,7 +243,7 @@ async def process_photo(message: types.Message, state: FSMContext):
 
 #cancel_photo:{order}:
 @dp.callback_query(F.data.startswith("cancel_last_photo"))
-async def cancel_uploaded_photo(callback: CallbackQuery, state: FSMContext):
+async def cancel_last_photo(callback: CallbackQuery, state: FSMContext):
     # order = callback.data.split(":")[1]
     data = await state.get_data()
     order_folder = data['order_folder']
@@ -254,8 +255,8 @@ async def cancel_uploaded_photo(callback: CallbackQuery, state: FSMContext):
     if not path.exists() or not path.is_dir():
         logger.error(f"Path {order_folder} not exist or not directory.")
     
-    # Ищем все файлы с расширением .jpg в каталоге
-    jpg_files = list(path.glob("*.jpg"))
+    # Ищем все файлы с заданным расширением  в каталоге
+    jpg_files = list(path.glob(f"*.{FORMAT_FOR_CONVERSION}"))
     
     # Сортируем файлы по имени
     jpg_files.sort(key=lambda x: x.name)
@@ -265,14 +266,16 @@ async def cancel_uploaded_photo(callback: CallbackQuery, state: FSMContext):
         # Удаляем последний файл в списке
         last_file = jpg_files[-1]
         last_file.unlink()
-        print(f"Удален файл: {last_file}")
+        await bot.send_message(callback.message.chat.id, 
+                               f'Файл {get_original_filename(last_file.name)} отменен.')
+        # callback.message.answer(f'Файл {last_file} отменен.')
+        number_uploaded_photos = get_number_photo_files(order_folder)
         logger.info(f"Удален файл по запросу пользователя: {last_file}")
     else:
         logger.info(f"Error: В {order_folder} no jpg files")
 
-    callback.message.answer('Файл отменен.')
-    number_uploaded_photos = get_number_photo_files(order_folder)
-    callback.message.answer(f'Сейчас загружено {number_uploaded_photos} из {photos_in_order} в заказе.')
+    await bot.send_message(callback.message.chat.id, 
+                           f'Сейчас загружено {number_uploaded_photos} из {photos_in_order} в заказе.')
 
     # callback.answer()
      
@@ -290,7 +293,6 @@ async def process_photo_wrong_type(message: types.Message, state: FSMContext):
             ]
         ]
     )
-
     await message.answer("Вы отправили фото не файлом, а изображением. Качество будет хуже.\n"
                          f"Продолжить/Отменить/Больше не спрашивать",
                          reply_markup=keyboard)

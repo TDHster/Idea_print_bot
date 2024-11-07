@@ -7,7 +7,7 @@ import numpy as np
 import hashlib
 from pillow_heif import register_heif_opener
 from time import time
-
+from config import *
 
 print(cv2.__version__)
 
@@ -43,7 +43,7 @@ def convert_to_jpeg(file_path):
         # Открываем файл с помощью PIL
         with Image.open(file_path) as img:
             # Создаем путь для сохранения JPEG файла
-            jpeg_path = file_path.with_suffix('.jpg')
+            jpeg_path = file_path.with_suffix(f'.{FORMAT_FOR_CONVERSION}')
             
             # Сохраняем изображение в формате JPEG
             # img.save(jpeg_path, "JPEG")
