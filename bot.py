@@ -32,6 +32,8 @@ API_URL = config['API_URL']
 ALLOWED_PATH = config['ALLOWED_PATH']  # для проверки чтобы не перезаписать что-нибудь.
 # PHONE_NUMBER_MANAGER = config['PHONE_NUMBER_MANAGER']
 ERROR_MESSAGE_FOR_USER = config['ERROR_MESSAGE_FOR_USER']
+MANAGER_TELEGRAM_ID = config['MANAGER_TELEGRAM_ID']
+
 
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
@@ -51,9 +53,38 @@ class OrderStates(StatesGroup):
 @dp.message(Command(commands=["start"]))
 async def cmd_start(message: types.Message, state: FSMContext):
     logger.info(f"User {message.from_user.id} started a session.")
-    await message.answer("Вас приветствует система приемки заказов <b>Идея Принт</b>.")
-    await message.answer("Введите номер вашего заказа:")
+    state.set_data({})
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Знаю номер заказа", callback_data=f"entering_order_number"),
+                InlineKeyboardButton(text="+Заказ", callback_data=f"new_order")
+            ]
+        ]
+    )
+    await message.answer("Я бот сборщик заказов типографии Идеяпринт."
+                         "Если вы уже оплатили заказ, то потребуется ввести его номер "
+                         "(можно с пробелами и без). Для нового заказа нажмите “+Заказ”", 
+                         reply_markup=keyboard)
+
+
+@dp.callback_query(F.data.startswith("entering_order_number"))
+# async def entering_order_number(message: types.Message, state: FSMContext):
+async def entering_order_number(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.answer("Введите номер вашего заказа:")
     await state.set_state(OrderStates.waiting_for_order_number)
+    await callback_query.answer()
+
+
+ # Нет в ТЗ
+@dp.callback_query(F.data.startswith("new_order"))
+# async def entering_order_number(message: types.Message, state: FSMContext):
+async def entering_order_number(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.answer(ERROR_MESSAGE_FOR_USER)
+    await bot.send_message(callback_query.from_user.id, "Эта функция не реализована. Перезапуск бота.")
+    await cmd_start(callback_query.message, state)
+
+    await callback_query.answer()
 
 
 # Хэндлер для номера заказа
@@ -204,9 +235,10 @@ async def process_print_order(callback: CallbackQuery, state: FSMContext):
     order_number = callback.data.split(":")[1]
     logger.info(f"Order {order_number} marked for printing by user {callback.from_user.id}")
     await callback.message.answer("Заказ отправлен в печать.")
-    await callback.answer(f"Это сообщение для менеджера.\n"
-                         f"Заказ {order_number} собран и подтверджен, надо печатать.") #flash message
+    # await callback.answer(f"Это сообщение для менеджера.\n"
+    #                      f"Заказ {order_number} собран и подтверджен, надо печатать.") #flash message
     await callback.answer()
+    bot.send_message(chat_id=MANAGER_TELEGRAM_ID, text=f"Заказ {order_number} собран и подтверджен, надо печатать.")
     # await state.reset_data()  # Сброс данных состояния
     await state.finish()
     await cmd_start(callback.message, state)
@@ -236,9 +268,7 @@ async def process_cancel_order(callback: CallbackQuery, state: FSMContext):
             logger.warning(f"Order folder {order_folder_path} does not exist.")
     
     # Сбрасываем данные состояния
-    await state.reset_data()
-    # await state.finish()      # Сброс состояния и данных состояния
-    
+    await state.update_data({}) # Сброс состояния и данных состояния    
     await callback.message.answer("Данные заказа сброшены.")
     await callback.answer()
     await cmd_start(callback.message, state)
