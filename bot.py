@@ -33,7 +33,9 @@ ALLOWED_PATH = config['ALLOWED_PATH']  # для проверки чтобы не
 # PHONE_NUMBER_MANAGER = config['PHONE_NUMBER_MANAGER']
 ERROR_MESSAGE_FOR_USER = config['ERROR_MESSAGE_FOR_USER']
 MANAGER_TELEGRAM_ID = config['MANAGER_TELEGRAM_ID']
-
+MIN_ASPECT_RATIO=config['MIN_ASPECT_RATIO']
+MAX_ASPECT_RATIO=1/MIN_ASPECT_RATIO
+BLURR_THRESHOLD=config['BLURR_THRESHOLD']
 
 # Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
@@ -183,10 +185,15 @@ async def process_photo(message: types.Message, state: FSMContext):
                 ]
             )
             await message.answer(f"Файл {uploaded_photos} из {number_of_photos} получен.\n"
+                                 f"Исходное имя файла: {document.file_name}"
                                  f"Aspect ratio: {aspect_ratio:0.1f}.\n"
                                  f"Коэффициент размытия фото: {blur:.1f}\n"
                                  f"MD5: {md5_hash}\n",
                                  reply_markup=keyboard)
+            if not MAX_ASPECT_RATIO > aspect_ratio > MIN_ASPECT_RATIO:
+                await message.answer('У этой фотографии соотношение сторон выходит за рамки рекомендованного, она слишком узкая/широкая')
+            if blur > BLURR_THRESHOLD:
+                await message.answer('Изображение на фотографии "размыто".')
 
     # Проверяем, завершен ли процесс загрузки фотографий
     if uploaded_photos >= number_of_photos:
