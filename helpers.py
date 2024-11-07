@@ -1,10 +1,12 @@
 #helpers.py
+import aiohttp
 from PIL import Image
 from pathlib import Path
 import cv2
 import numpy as np
 import hashlib
 from pillow_heif import register_heif_opener
+from time import time
 
 
 print(cv2.__version__)
@@ -44,7 +46,8 @@ def convert_to_jpeg(file_path):
             jpeg_path = file_path.with_suffix('.jpg')
             
             # Сохраняем изображение в формате JPEG
-            img.save(jpeg_path, "JPEG")
+            # img.save(jpeg_path, "JPEG")
+            img.save(jpeg_path)
             
             # Удаляем исходный файл
             file_path.unlink()
@@ -107,51 +110,54 @@ def calculate_md5(file_path):
     return md5_hash.hexdigest()
 
 
-def generate_file_name(number, original_file_name, num_digits=3):
-    """
-    Генерирует имя файла в формате "число_оригинальное_имя_файла.расширение".
+# def generate_file_name(number, original_file_name, num_digits=3):
+#     """
+#     Генерирует имя файла в формате "число_оригинальное_имя_файла.расширение".
 
-    :param number: Число загруженных фотографий.
-    :param original_file_name: Оригинальное имя файла.
-    :param num_digits: Количество знаков, до которых нужно дополнить число нулями (по умолчанию 3).
-    :return: Новое имя файла.
-    """
-    # Дополняем число нулями до указанного количества знаков
-    number_str = f"{number:0{num_digits}d}"
-    
-    # Получаем расширение файла
-    file_extension = Path(original_file_name).suffix
-    
-    # Убираем расширение из оригинального имени файла
-    base_name = Path(original_file_name).stem
-    
-    # Формируем новое имя файла
-    new_file_name = f"{number_str}_{base_name}{file_extension}"
-    
-    print(f'{new_file_name=}')
-    
-    return new_file_name
+#     :param number: Число загруженных фотографий.
+#     :param original_file_name: Оригинальное имя файла.
+#     :param num_digits: Количество знаков, до которых нужно дополнить число нулями (по умолчанию 3).
+#     :return: Новое имя файла.
+#     """
+#     # Дополняем число нулями до указанного количества знаков
+#     number_str = f"{number:0{num_digits}d}"
+#     # Получаем расширение файла
+#     file_extension = Path(original_file_name).suffix
+#     # Убираем расширение из оригинального имени файла
+#     base_name = Path(original_file_name).stem    
+#     # Формируем новое имя файла
+#     new_file_name = f"{number_str}_{base_name}{file_extension}"    
+#     print(f'{new_file_name=}')    
+#     return new_file_name
 
-def extract_original_file_name(file_path):
-    """
-    Извлекает оригинальное имя файла из пути, исключая пять цифр и подчеркивание в начале.
 
-    :param file_path: Путь к файлу.
-    :return: Оригинальное имя файла.
+def generate_unique_filename(original_filename):
+    timestamp = int(time() * 1000)  # Метка времени в миллисекундах
+    return f"{timestamp}_{original_filename}"
+
+
+def get_original_filename(unique_filename):
+    # Разделяем по первому символу "_" и возвращаем оригинальное имя файла
+    return unique_filename.split("_", 1)[1]
+
+
+def get_number_photo_files(directory_path: str) -> int:
     """
-    # Получаем имя файла из пути
-    file_name = Path(file_path).name
+    Подсчитывает количество файлов с расширением .jpg в указанном каталоге.
+
+    :param directory_path: Путь к каталогу.
+    :return: Количество файлов с расширением .jpg.
+    """
+    # Создаем объект Path из строки пути
+    path = Path(directory_path)
     
-    # Проверяем, что имя файла начинается с пяти цифр и подчеркивания
-    if file_name[:6].isdigit() and file_name[5] == '_':
-        # Извлекаем оригинальное имя файла
-        original_file_name = file_name[6:]
-    else:
-        # Если формат не соответствует ожидаемому, возвращаем исходное имя файла
-        original_file_name = file_name
+    # Проверяем, существует ли каталог и является ли он каталогом
+    if not path.exists() or not path.is_dir():
+        raise ValueError(f"Путь {directory_path} не существует или не является каталогом.")
+        return None
     
-    return original_file_name
-    # Пример использования
-    # file_path = Path("orders/2024-10-29/1_Новый/00003_img4312.jpg")
-    # original_file_name = extract_original_file_name(file_path)
-    # print(original_file_name)  # Вывод: img4312.jpg
+    # Ищем все файлы с расширением .jpg в каталоге
+    jpg_files = list(path.glob("*.jpg"))
+    
+    # Возвращаем количество найденных файлов
+    return len(jpg_files)
