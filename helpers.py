@@ -7,6 +7,7 @@ import numpy as np
 import hashlib
 from pillow_heif import register_heif_opener
 from time import time
+from collections import defaultdict
 from config import *
 
 print(cv2.__version__)
@@ -46,7 +47,7 @@ def convert_to_jpeg(file_path):
             image_path = file_path.with_suffix(f'.{IMG_WORK_FORMAT}')
             
             # Сохраняем изображение в формате JPEG
-            # img.save(jpeg_path, "JPEG")
+            # img.save(image_path, "JPEG")
             img.save(image_path)
             
             # Удаляем исходный файл
@@ -83,31 +84,31 @@ def estimate_blur(image_path):
     # Применяем оператор Лапласа для вычисления градиента
     laplacian = cv2.Laplacian(image, cv2.CV_64F)
     
-    # Вычисляем дисперсию Лапласиана
+    # Вычисляем дисперсию Лапласиана, чем она больше тем больше резких деталей на изображении.
     variance = laplacian.var()
     
     return variance
 
 
-def calculate_md5(file_path):
-    """
-    Вычисляет MD5 хеш файла по заданному пути.
+# def calculate_md5(file_path):
+#     """
+#     Вычисляет MD5 хеш файла по заданному пути.
 
-    :param file_path: Путь к файлу.
-    :return: MD5 хеш файла в виде строки.
-    """
-    # Создаем объект хеша
-    md5_hash = hashlib.md5()
+#     :param file_path: Путь к файлу.
+#     :return: MD5 хеш файла в виде строки.
+#     """
+#     # Создаем объект хеша
+#     md5_hash = hashlib.md5()
     
-    # Открываем файл в бинарном режиме
-    with open(file_path, "rb") as f:
-        # Читаем файл блоками по 4096 байт
-        for chunk in iter(lambda: f.read(4096), b""):
-            # Обновляем хеш с каждым блоком данных
-            md5_hash.update(chunk)
+#     # Открываем файл в бинарном режиме
+#     with open(file_path, "rb") as f:
+#         # Читаем файл блоками по 4096 байт
+#         for chunk in iter(lambda: f.read(4096), b""):
+#             # Обновляем хеш с каждым блоком данных
+#             md5_hash.update(chunk)
     
-    # Возвращаем MD5 хеш в виде шестнадцатеричной строки
-    return md5_hash.hexdigest()
+#     # Возвращаем MD5 хеш в виде шестнадцатеричной строки
+#     return md5_hash.hexdigest()
 
 
 # def generate_file_name(number, original_file_name, num_digits=3):
@@ -137,8 +138,9 @@ def generate_unique_filename(original_filename):
 
 
 def get_original_filename(unique_filename):
+    unique_filename_str = str(unique_filename)
     # Разделяем по первому символу "_" и возвращаем оригинальное имя файла
-    return unique_filename.split("_", 1)[1]
+    return unique_filename_str.split("_", 1)[1]
 
 
 def get_number_photo_files(directory_path: str) -> int:
@@ -161,3 +163,44 @@ def get_number_photo_files(directory_path: str) -> int:
     
     # Возвращаем количество найденных файлов
     return len(jpg_files)
+
+
+def calculate_md5(file_path):
+    """Вычисляет MD5 хеш для файла по указанному пути."""
+    hash_md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+def find_matching_files_by_md5(directory, target_file=None):
+    """
+    Ищет файлы с расширением .jpg в указанном каталоге и возвращает список попарных совпадений по MD5.
+    Если указан target_file, возвращает только совпадения с этим файлом.
+    """
+    # Преобразуем directory и target_file в объекты Path
+    directory = Path(directory)
+    target_file = Path(target_file) if target_file else None
+    
+    # Словарь для хранения списка файлов по их MD5-хешу
+    md5_dict = defaultdict(list)
+    matching_pairs = []
+
+    # Проходим по всем файлам в каталоге и его подкаталогах
+    for file_path in directory.rglob(f"*.{IMG_WORK_FORMAT}"):
+        file_md5 = calculate_md5(file_path)
+        md5_dict[file_md5].append(file_path)
+
+    # Если указан целевой файл, проверяем его MD5 и ищем совпадения
+    if target_file and target_file.exists():
+        target_md5 = calculate_md5(target_file)
+        if target_md5 in md5_dict:
+            matching_pairs = [(target_file, file) for file in md5_dict[target_md5] if file != target_file]
+        return matching_pairs
+
+    # Ищем все совпадения по MD5
+    for file_list in md5_dict.values():
+        if len(file_list) > 1:
+            matching_pairs.extend([(file_list[i], file_list[j]) for i in range(len(file_list)) for j in range(i + 1, len(file_list))])
+
+    return matching_pairs

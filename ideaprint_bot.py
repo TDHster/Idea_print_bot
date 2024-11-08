@@ -12,8 +12,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import dotenv_values
 from pathlib import Path
-from datetime import date
-from helpers import get_aspect_ratio, convert_to_jpeg, estimate_blur, calculate_md5, generate_unique_filename, get_original_filename, get_number_photo_files
+import os
+from helpers import get_aspect_ratio, convert_to_jpeg, estimate_blur, find_matching_files_by_md5, generate_unique_filename, get_original_filename, get_number_photo_files
 from config import *
 
 # Настройка логирования
@@ -54,7 +54,7 @@ class OrderStates(StatesGroup):
 @dp.message(Command(commands=["start"]))
 async def cmd_start(message: types.Message, state: FSMContext):
     logger.info(f"User {message.from_user.id} started a session.")
-    state.set_data({})
+    await state.set_data({})
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -179,13 +179,15 @@ async def process_photo(message: types.Message, state: FSMContext):
             file_info = await bot.get_file(file_id)
             await bot.download_file(file_info.file_path, file_path)
             
-            # Конвертируем в JPEG, если это необходимо
-            jpeg_path = convert_to_jpeg(file_path)
-
+            # Конвертируем, если это необходимо
+            img_path = convert_to_jpeg(file_path)
+            if not os.path.exists(img_path):
+                logger.error(f"Файл {img_path} не существует после конвертации.")
+                continue
+            
             # Получаем соотношение сторон
-            aspect_ratio = get_aspect_ratio(jpeg_path)
-            blur = estimate_blur(jpeg_path)
-            md5_hash = calculate_md5(jpeg_path)
+            aspect_ratio = get_aspect_ratio(img_path)
+            blur = estimate_blur(img_path)
 
             uploaded_photos  = get_number_photo_files(order_folder)
             
@@ -200,8 +202,7 @@ async def process_photo(message: types.Message, state: FSMContext):
             await message.answer(f"Файл {uploaded_photos} из {number_of_photos} получен.\n"
                                  f"Исходное имя файла: {document.file_name}\n"
                                  f"Aspect ratio: {aspect_ratio:0.1f}.\n"
-                                 f"Коэффициент размытия фото: {blur:.1f}\n"
-                                 f"MD5: {md5_hash}\n",
+                                 f"Коэффициент размытия фото: {blur:.1f}\n",
                                  reply_markup=keyboard)
             
             keyboard_cancel_file = InlineKeyboardMarkup(
@@ -219,6 +220,18 @@ async def process_photo(message: types.Message, state: FSMContext):
             if blur < BLURR_THRESHOLD:
                 await message.answer('Изображение на фотографии слишком "размыто".',
                                      reply_markup=keyboard_cancel_file)
+            
+            logger.info(f'{order_folder=} {img_path=}')
+            matches = find_matching_files_by_md5(order_folder, img_path)
+            if matches:
+                await message.answer(f'Загруженное фото совпадает с предыдущими {matches}',
+                        reply_markup=keyboard_cancel_file)
+                for match in matches:
+                    print("Совпадения по MD5:")
+                    for file_name in match:
+                        print(get_original_filename(file_name))
+            else:
+                print("Совпадений по MD5 не найдено.")
 
     # Проверяем, завершен ли процесс загрузки фотографий
     if uploaded_photos >= number_of_photos:
@@ -238,7 +251,7 @@ async def process_photo(message: types.Message, state: FSMContext):
         await message.answer(f"Жду еще фото.")
 
     # Обновляем состояние с новым значением загруженных фотографий
-    await state.update_data(uploaded_photos=uploaded_photos)
+    # await state.update_data(uploaded_photos=uploaded_photos)
 
 
 #cancel_photo:{order}:
@@ -272,7 +285,7 @@ async def cancel_last_photo(callback: CallbackQuery, state: FSMContext):
         number_uploaded_photos = get_number_photo_files(order_folder)
         logger.info(f"Удален файл по запросу пользователя: {last_file}")
         await callback.answer("Файл отменен.")
-
+        await state.set_state(OrderStates.waiting_for_photos)
     else:
         logger.info(f"Error: В {order_folder} no {IMG_WORK_FORMAT} files")
         await callback.answer("Ошибка: В каталоге нет файлов для удаления.")
