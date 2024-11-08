@@ -256,7 +256,7 @@ async def cancel_last_photo(callback: CallbackQuery, state: FSMContext):
         logger.error(f"Path {order_folder} not exist or not directory.")
     
     # Ищем все файлы с заданным расширением  в каталоге
-    jpg_files = list(path.glob(f"*.{FORMAT_FOR_CONVERSION}"))
+    jpg_files = list(path.glob(f"*.{IMG_WORK_FORMAT}"))
     
     # Сортируем файлы по имени
     jpg_files.sort(key=lambda x: x.name)
@@ -271,12 +271,16 @@ async def cancel_last_photo(callback: CallbackQuery, state: FSMContext):
         # callback.message.answer(f'Файл {last_file} отменен.')
         number_uploaded_photos = get_number_photo_files(order_folder)
         logger.info(f"Удален файл по запросу пользователя: {last_file}")
+        await callback.answer("Файл отменен.")
+
     else:
-        logger.info(f"Error: В {order_folder} no jpg files")
+        logger.info(f"Error: В {order_folder} no {IMG_WORK_FORMAT} files")
+        await callback.answer("Ошибка: В каталоге нет файлов для удаления.")
 
     await bot.send_message(callback.message.chat.id, 
                            f'Сейчас загружено {number_uploaded_photos} из {photos_in_order} в заказе.')
-
+    if number_uploaded_photos < photos_in_order:
+        await bot.send_message(callback.message.chat.id, f'Ожидаю фотографий.')
     # callback.answer()
      
         

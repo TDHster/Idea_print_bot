@@ -43,16 +43,16 @@ def convert_to_jpeg(file_path):
         # Открываем файл с помощью PIL
         with Image.open(file_path) as img:
             # Создаем путь для сохранения JPEG файла
-            jpeg_path = file_path.with_suffix(f'.{FORMAT_FOR_CONVERSION}')
+            image_path = file_path.with_suffix(f'.{IMG_WORK_FORMAT}')
             
             # Сохраняем изображение в формате JPEG
             # img.save(jpeg_path, "JPEG")
-            img.save(jpeg_path)
+            img.save(image_path)
             
             # Удаляем исходный файл
             file_path.unlink()
             
-            return jpeg_path
+            return image_path
     else:
         # Если файл не является HEIC, возвращаем исходный путь
         return file_path
