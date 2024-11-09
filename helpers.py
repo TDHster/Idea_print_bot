@@ -10,7 +10,7 @@ from time import time
 from collections import defaultdict
 from config import *
 
-print(cv2.__version__)
+print(f'{cv2.__version__=}')
 
 
 # def convert_to_jpeg(file_path: Path) -> Path:
@@ -90,48 +90,6 @@ def estimate_blur(image_path):
     return variance
 
 
-# def calculate_md5(file_path):
-#     """
-#     Вычисляет MD5 хеш файла по заданному пути.
-
-#     :param file_path: Путь к файлу.
-#     :return: MD5 хеш файла в виде строки.
-#     """
-#     # Создаем объект хеша
-#     md5_hash = hashlib.md5()
-    
-#     # Открываем файл в бинарном режиме
-#     with open(file_path, "rb") as f:
-#         # Читаем файл блоками по 4096 байт
-#         for chunk in iter(lambda: f.read(4096), b""):
-#             # Обновляем хеш с каждым блоком данных
-#             md5_hash.update(chunk)
-    
-#     # Возвращаем MD5 хеш в виде шестнадцатеричной строки
-#     return md5_hash.hexdigest()
-
-
-# def generate_file_name(number, original_file_name, num_digits=3):
-#     """
-#     Генерирует имя файла в формате "число_оригинальное_имя_файла.расширение".
-
-#     :param number: Число загруженных фотографий.
-#     :param original_file_name: Оригинальное имя файла.
-#     :param num_digits: Количество знаков, до которых нужно дополнить число нулями (по умолчанию 3).
-#     :return: Новое имя файла.
-#     """
-#     # Дополняем число нулями до указанного количества знаков
-#     number_str = f"{number:0{num_digits}d}"
-#     # Получаем расширение файла
-#     file_extension = Path(original_file_name).suffix
-#     # Убираем расширение из оригинального имени файла
-#     base_name = Path(original_file_name).stem    
-#     # Формируем новое имя файла
-#     new_file_name = f"{number_str}_{base_name}{file_extension}"    
-#     print(f'{new_file_name=}')    
-#     return new_file_name
-
-
 def generate_unique_filename(original_filename):
     timestamp = int(time() * 1000)  # Метка времени в миллисекундах
     return f"{timestamp}_{original_filename}"
@@ -159,7 +117,7 @@ def get_number_photo_files(directory_path: str) -> int:
         return None
     
     # Ищем все файлы с расширением .jpg в каталоге
-    jpg_files = list(path.glob("*.jpg"))
+    jpg_files = list(path.glob(f"*.{IMG_WORK_FORMAT}"))
     
     # Возвращаем количество найденных файлов
     return len(jpg_files)
