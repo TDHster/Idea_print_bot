@@ -78,6 +78,7 @@ async def entering_order_number(callback_query: types.CallbackQuery, state: FSMC
 
 
  # Нет в ТЗ
+
 @dp.callback_query(F.data.startswith("new_order"))
 async def entering_order_number(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.answer(ERROR_MESSAGE_FOR_USER)
@@ -86,7 +87,7 @@ async def entering_order_number(callback_query: types.CallbackQuery, state: FSMC
     await cmd_start(callback_query.message, state)
 
 
-# Функция для получения данных о заказе
+# Функция для получения данных о заказе от 1С
 async def fetch_order_data_via_API(order_number: str) -> tuple:
     async with aiohttp.ClientSession() as session:
         async with session.get(f"{API_URL}{order_number}") as response:
@@ -101,7 +102,7 @@ async def fetch_order_data_via_API(order_number: str) -> tuple:
                 else:
                     return None, None
             else:
-                logger.info(f"API 1c return answer: {response.status}")
+                logger.error(f"API 1c return answer: {response.status}")
                 return None, None
 
 
@@ -115,12 +116,15 @@ async def process_order_number(message: types.Message, state: FSMContext):
     number_of_photos, order_folder = await fetch_order_data_via_API(order_number)
     
     if number_of_photos is None or order_folder is None:
+        # await message.answer(f"Ошибка программы. Не получен путь к папке заказа или количество фото.")
+        logger.error("1C response number_of_photos is None or order_folder is None")
         await message.answer(ERROR_MESSAGE_FOR_USER)
         await state.set_state(OrderStates.waiting_for_order_number)
         return
     
     if not str(order_folder).startswith(ALLOWED_PATH):
-        await message.answer(f"Ошибка программы. Получен неверный путь к папке заказа.")
+        # await message.answer(f"Ошибка программы. Получен неверный путь к папке заказа.")
+        logger.error("1C return not allowed path.")
         await message.answer(ERROR_MESSAGE_FOR_USER)
         await state.set_state(OrderStates.waiting_for_order_number)
         return
@@ -132,7 +136,7 @@ async def process_order_number(message: types.Message, state: FSMContext):
     # Сохраняем данные заказа в состоянии
     await state.update_data(order_number=order_number, order_folder=order_folder, 
                             number_of_photos=number_of_photos, uploaded_photos=uploaded_photos)
-    logger.info(f"Order folder created: {order_folder}")
+    logger.info(f"For order {order_number} folder created: {order_folder}, for {number_of_photos} number of photos.")
     
     keyboard_cancel_order = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -141,7 +145,6 @@ async def process_order_number(message: types.Message, state: FSMContext):
             ]
         ]
     )
-    
     await message.answer(
         f"Отправляйте мне фотографии, которые хотите напечатать в альбоме.\n"
         f"У вас {number_of_photos} фотографий для загрузки.\n"
@@ -159,7 +162,6 @@ async def process_photo(message: types.Message, state: FSMContext):
     data = await state.get_data()
     order_folder = data['order_folder']
     number_of_photos = data['number_of_photos']
-    uploaded_photos = data.get('uploaded_photos', 0)  # Получаем текущее количество загруженных фотографий
     order_number = data['order_number']
 
     # Получаем список документов
@@ -168,9 +170,6 @@ async def process_photo(message: types.Message, state: FSMContext):
     for document in documents:
         if document:
             file_id = document.file_id  # Получаем file_id
-            # file_path = Path("orders/2024-10-29/1_Новый") / generate_file_name(uploaded_photos, original_file_name)
-
-            # filename_with_number = generate_file_name(uploaded_photos, document.file_name)
             filename_with_unique = generate_unique_filename(document.file_name)
             # file_path = order_folder / document.file_name  # Определяем путь для сохранения файла
             file_path = order_folder / filename_with_unique  # Определяем путь для сохранения файла
@@ -182,10 +181,9 @@ async def process_photo(message: types.Message, state: FSMContext):
             # Конвертируем, если это необходимо
             img_path = convert_to_jpeg(file_path)
             if not os.path.exists(img_path):
-                logger.error(f"Файл {img_path} не существует после конвертации.")
+                logger.error(f"File {img_path} doesn't exist after image conversion.")
                 continue
             
-            # Получаем соотношение сторон
             aspect_ratio = get_aspect_ratio(img_path)
             blur = estimate_blur(img_path)
 
@@ -195,14 +193,18 @@ async def process_photo(message: types.Message, state: FSMContext):
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
-                        InlineKeyboardButton(text="Отменить весь заказ", callback_data=f"cancel_order:{order_number}")
+                        InlineKeyboardButton(text="Отменить весь заказ", callback_data=f"cancel_order:{order_number}"),
+                        InlineKeyboardButton(text="Редактировать фото", callback_data=f"edit_order:{order_number}"),
+                        InlineKeyboardButton(text="Отправить в работу не полный заказ", callback_data=f"send_not_full_order:{order_number}")                        
                     ]
                 ]
             )
-            await message.answer(f"Файл {uploaded_photos} из {number_of_photos} получен.\n"
-                                 f"Исходное имя файла: {document.file_name}\n"
-                                 f"Aspect ratio: {aspect_ratio:0.1f}.\n"
-                                 f"Коэффициент размытия фото: {blur:.1f}\n",
+            await message.answer(f"Фотография получена.\n"
+                                 f"Техничская информация:\n"
+                                 f" Файл {uploaded_photos} из {number_of_photos} получен.\n"
+                                 f" Исходное имя файла: {document.file_name}\n"
+                                 f" Aspect ratio: {aspect_ratio:0.1f}.\n"
+                                 f" Коэффициент размытия фото: {blur:.1f}\n",
                                  reply_markup=keyboard)
             
             keyboard_cancel_file = InlineKeyboardMarkup(
@@ -214,14 +216,14 @@ async def process_photo(message: types.Message, state: FSMContext):
                 ]
             )
             if not MAX_ASPECT_RATIO > aspect_ratio > MIN_ASPECT_RATIO:
-                await message.answer('У этой фотографии соотношение сторон выходит за рамки рекомендованного,'
-                                     'она слишком узкая/широкая', 
+                await message.answer('Фотография узкая. Мы можем ее напечатать, но при размещении на карточке '
+                                     'будет широкое белое поле, рекомендуем откадрировать и загрузить снова.', 
                                      reply_markup=keyboard_cancel_file)
             if blur < BLURR_THRESHOLD:
                 await message.answer('Изображение на фотографии слишком "размыто".',
                                      reply_markup=keyboard_cancel_file)
             
-            logger.info(f'{order_folder=} {img_path=}')
+            # logger.info(f'{order_folder=} {img_path=}')            
             matches = find_matching_files_by_md5(order_folder, img_path)
             if matches:
                 await message.answer(f'Загруженное фото совпадает с предыдущими {matches}',
@@ -230,8 +232,12 @@ async def process_photo(message: types.Message, state: FSMContext):
                     print("Совпадения по MD5:")
                     for file_name in match:
                         print(get_original_filename(file_name))
+                        await message.answer(f'Совпадение с: {match}',
+                            reply_markup=keyboard_cancel_file)
             else:
-                print("Совпадений по MD5 не найдено.")
+                pass
+                # print("Совпадений по MD5 не найдено.")
+
 
     # Проверяем, завершен ли процесс загрузки фотографий
     if uploaded_photos >= number_of_photos:
@@ -250,8 +256,54 @@ async def process_photo(message: types.Message, state: FSMContext):
     else:
         await message.answer(f"Жду еще фото.")
 
-    # Обновляем состояние с новым значением загруженных фотографий
-    # await state.update_data(uploaded_photos=uploaded_photos)
+
+@dp.callback_query(F.data.startswith("edit_order"))
+async def edit_order(callback: CallbackQuery, state: FSMContext):
+    # order = callback.data.split(":")[1]
+    data = await state.get_data()
+    order_folder = data['order_folder']
+    photos_in_order = data['number_of_photos']
+    await bot.send_message(callback.message.chat.id,
+                           f'Редактировать фото')
+    # TODO
+
+
+@dp.callback_query(F.data.startswith("send_not_full_order:"))
+async def send_not_full_order(callback: CallbackQuery, state: FSMContext):
+    order_number = callback.data.split(":")[1]
+    data = await state.get_data()
+    order_folder = data['order_folder']
+    photos_in_order = data['number_of_photos']
+    uploaded_photos  = get_number_photo_files(order_folder)
+
+    # Проверяем, завершен ли процесс загрузки фотографий
+    if uploaded_photos < photos_in_order:
+        # await state.set_state(OrderStates.order_complete)
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="Продолжить загрузку фотографий", callback_data=f"continue_load_photo:{order_number}"),
+                    InlineKeyboardButton(text="Отправить неполный заказ", callback_data=f"print_order:{order_number}")
+                ]
+            ]
+        )
+        await bot.send_message(callback.message.chat.id, 
+                               f'У вас ещё не загружено х фотографий. Деньги не возвращаются',
+                               reply_markup=keyboard)
+    # TODO
+
+
+@dp.callback_query(F.data.startswith("continue_load_photo:"))
+async def continue_load_photo(callback: CallbackQuery, state: FSMContext):
+    # order = callback.data.split(":")[1]
+    # data = await state.get_data()
+    # order_folder = data['order_folder']
+    # photos_in_order = data['number_of_photos']
+    # uploaded_photos  = get_number_photo_files(order_folder)
+
+    await state.set_state(OrderStates.waiting_for_photos)
+    await bot.send_message(callback.message.chat.id, 
+                            f'Ожидаю фотографии.')
 
 
 #cancel_photo:{order}:
@@ -268,7 +320,6 @@ async def cancel_last_photo(callback: CallbackQuery, state: FSMContext):
     if not path.exists() or not path.is_dir():
         logger.error(f"Path {order_folder} not exist or not directory.")
     
-    # Ищем все файлы с заданным расширением  в каталоге
     jpg_files = list(path.glob(f"*.{IMG_WORK_FORMAT}"))
     
     # Сортируем файлы по имени
@@ -319,7 +370,7 @@ async def process_photo_wrong_type(message: types.Message, state: FSMContext):
 # Хэндлер для обработки callback "Отправить в печать"
 @dp.callback_query(F.data.startswith("print_order:"))
 async def process_print_order(callback: CallbackQuery, state: FSMContext):
-    order_number = callback.data.split(":")[1]
+    order_number = callback.data.split(":")[1]   
     logger.info(f"Order {order_number} marked for printing by user {callback.from_user.id}")
     await callback.message.answer("Заказ отправлен в печать.")
     await callback.answer()
