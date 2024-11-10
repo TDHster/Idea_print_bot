@@ -13,6 +13,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import dotenv_values
 from pathlib import Path
 import os
+from time import time
 from helpers import get_aspect_ratio, convert_to_jpeg, estimate_blur, find_matching_files_by_md5, generate_unique_filename, get_original_filename, get_number_photo_files
 from config import *
 
@@ -48,7 +49,6 @@ class OrderStates(StatesGroup):
     processing_photos = State()
     order_complete = State()
     sending_to_print = State()
-
 
 # Хэндлер для команды /start
 @dp.message(Command(commands=["start"]))
@@ -155,88 +155,104 @@ async def process_order_number(message: types.Message, state: FSMContext):
     await state.set_state(OrderStates.waiting_for_photos)
 
 
-# Хэндлер для получения фотографий как документ
+# Функция для создания клавиатуры отмены
+def create_cancel_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Отменить последнее фото", callback_data="cancel_last_photo"),
+            ]
+        ]
+    )
+
+
+# Функция для загрузки и сохранения файла
+async def download_and_save_file(file_id, file_path):
+    file_info = await bot.get_file(file_id)
+    await bot.download_file(file_info.file_path, file_path)
+
+# Функция для обработки фотографии
+async def process_image(img_path, order_folder, order_number, number_of_photos, message):
+    uploaded_photos = get_number_photo_files(order_folder)
+    logger.info(f"Photo saved for user {message.from_user.id} at {img_path}. {uploaded_photos} of {number_of_photos} uploaded.")
+    
+    await check_aspect_ratio(img_path, message)
+    await check_blur(img_path, message)
+    return uploaded_photos
+
+# Функция для проверки и отправки сообщений о совпадениях по MD5
+async def check_md5_matches(img_path, order_folder, message):
+    matches = find_matching_files_by_md5(order_folder, img_path)
+    if matches:
+        await message.answer(
+            f'Загруженное фото совпадает с предыдущими {matches}',
+            reply_markup=create_cancel_keyboard()
+        )
+        for match in matches:
+            await message.answer(f'Совпадение с: {match}', reply_markup=create_cancel_keyboard())
+
+
+# Функция для проверки aspect ratio и отправки сообщения
+async def check_aspect_ratio(img_path, message):
+    aspect_ratio = get_aspect_ratio(img_path)
+    if not MAX_ASPECT_RATIO > aspect_ratio > MIN_ASPECT_RATIO:
+        await message.answer(
+            'Фотография узкая. Мы можем ее напечатать, но при размещении на карточке '
+            'будет широкое белое поле. Рекомендуем откадрировать и загрузить снова.',
+            reply_markup=create_cancel_keyboard()
+        )
+
+# Функция для проверки размытия и отправки сообщения
+async def check_blur(img_path, message):
+    blur = estimate_blur(img_path)
+    if blur < BLURR_THRESHOLD:
+        await message.answer(
+            'Изображение на фотографии слишком "размыто".',
+            reply_markup=create_cancel_keyboard()
+        )
+
+
+# Хэндлер для получения фотографий как документ  OrderStates.waiting_for_photos
 @dp.message(F.content_type.in_({"document"}), OrderStates.waiting_for_photos)
-async def process_photo(message: types.Message, state: FSMContext):
+async def process_photo_document(message: types.Message, state: FSMContext):
+    await process_photo(message, state, is_document=True)
+
+# Хэндлер для получения фотографий как изображения
+@dp.message(F.content_type.in_({"photo"}), OrderStates.waiting_for_photos)
+async def process_photo_image(message: types.Message, state: FSMContext):
+    await process_photo(message, state, is_document=False)
+
+# Общая функция для обработки фотографии, учитывая её тип
+async def process_photo(message: types.Message, state: FSMContext, is_document: bool):
     # Получаем данные о состоянии
     data = await state.get_data()
-    order_folder = data['order_folder']
+    order_folder = Path(data['order_folder'])
     number_of_photos = data['number_of_photos']
     order_number = data['order_number']
 
-    # Получаем список документов
-    documents = message.document if isinstance(message.document, list) else [message.document]
+    # Получаем максимальное фото для photo и документ, если передан
+    file = message.document if is_document else message.photo[-1]
 
-    for document in documents:
-        if document:
-            file_id = document.file_id  # Получаем file_id
-            filename_with_unique = generate_unique_filename(document.file_name)
-            # file_path = order_folder / document.file_name  # Определяем путь для сохранения файла
-            file_path = order_folder / filename_with_unique  # Определяем путь для сохранения файла
-            
-            # Скачиваем и сохраняем файл
-            file_info = await bot.get_file(file_id)
-            await bot.download_file(file_info.file_path, file_path)
-            
-            # Конвертируем, если это необходимо
-            img_path = convert_to_jpeg(file_path)
-            if not os.path.exists(img_path):
-                logger.error(f"File {img_path} doesn't exist after image conversion.")
-                continue
-            
-            aspect_ratio = get_aspect_ratio(img_path)
-            blur = estimate_blur(img_path)
+    if file:
+        file_id = file.file_id
+        original_filename = file.file_name if is_document else f"photo_{int(time() * 1000)}.jpg"
+        filename_with_unique = generate_unique_filename(original_filename)
+        file_path = order_folder / filename_with_unique
 
-            uploaded_photos  = get_number_photo_files(order_folder)
-            
-            logger.info(f"Photo saved for user {message.from_user.id} at {file_path}. {uploaded_photos} of {number_of_photos} uploaded.")
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="Отменить весь заказ", callback_data=f"cancel_order:{order_number}"),
-                        InlineKeyboardButton(text="Редактировать фото", callback_data=f"edit_order:{order_number}"),
-                        InlineKeyboardButton(text="Отправить в работу не полный заказ", callback_data=f"send_not_full_order:{order_number}")                        
-                    ]
-                ]
-            )
-            await message.answer(f"Фотография получена.\n"
-                                 f"Техническая информация:\n"
-                                 f" Файл {uploaded_photos} из {number_of_photos} получен.\n"
-                                 f" Исходное имя файла: {document.file_name}\n"
-                                 f" Aspect ratio: {aspect_ratio:0.1f}.\n"
-                                 f" Коэффициент размытия фото: {blur:.1f}\n",
-                                 reply_markup=keyboard)
-            
-            keyboard_cancel_file = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="Отменить последнее фото", 
-                                             callback_data=f"cancel_last_photo"),
-                    ]
-                ]
-            )
-            if not MAX_ASPECT_RATIO > aspect_ratio > MIN_ASPECT_RATIO:
-                await message.answer('Фотография узкая. Мы можем ее напечатать, но при размещении на карточке '
-                                     'будет широкое белое поле, рекомендуем откадрировать и загрузить снова.', 
-                                     reply_markup=keyboard_cancel_file)
-            if blur < BLURR_THRESHOLD:
-                await message.answer('Изображение на фотографии слишком "размыто".',
-                                     reply_markup=keyboard_cancel_file)
-            
-            # logger.info(f'{order_folder=} {img_path=}')            
-            matches = find_matching_files_by_md5(order_folder, img_path)
-            if matches:
-                await message.answer(f'Загруженное фото совпадает с предыдущими {matches}',
-                        reply_markup=keyboard_cancel_file)
-                for match in matches:
-                    print("Совпадения по MD5:")
-                    for file_name in match:
-                        print(get_original_filename(file_name))
-                        await message.answer(f'Совпадение с: {match}',
-                            reply_markup=keyboard_cancel_file)
-            else:
-                pass
-                # print("Совпадений по MD5 не найдено.")
+        # Скачиваем и сохраняем файл
+        await download_and_save_file(file_id, file_path)
+
+        # Конвертируем, если это необходимо
+        img_path = convert_to_jpeg(file_path)
+        if not img_path.exists():
+            logger.error(f"File {img_path} doesn't exist after image conversion.")
+            return
+
+        # Обрабатываем фотографию
+        uploaded_photos = await process_image(img_path, order_folder, order_number, number_of_photos, message)
+
+        # Проверяем совпадения по MD5
+        await check_md5_matches(img_path, order_folder, message)
 
     # Проверяем, завершен ли процесс загрузки фотографий
     if uploaded_photos >= number_of_photos:
@@ -451,7 +467,7 @@ async def process_print_order(callback: CallbackQuery, state: FSMContext):
     logger.info(f"Order {order_number} marked for printing by user {callback.from_user.id}")
     await callback.message.answer("Заказ отправлен в печать.")
     await callback.answer()
-    await bot.send_message(chat_id=MANAGER_TELEGRAM_ID, text=f"Заказ {order_number} собран и подтверджен, надо печатать.")
+    await bot.send_message(chat_id=MANAGER_TELEGRAM_ID, text=f"Сообщение менеджеру: Заказ {order_number} собран и подтверджен, надо печатать.")
     await state.update_data({}) # Сброс данных состояния    
     await cmd_start(callback.message, state)
     

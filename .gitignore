@@ -1,5 +1,5 @@
 .env
 venv
 orders/*
-__pycache__
 C:*
+__pycache__/*
