@@ -23,24 +23,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-# Загружаем переменные окружения
-# config = dotenv_values(".env")
-# BOT_TOKEN = config['BOT_API']
-# API_URL = config['API_URL']
-# ALLOWED_PATH = config['ALLOWED_PATH']  # для проверки пути сохранения файлов чтобы не перезаписать что-нибудь.
-# ERROR_MESSAGE_FOR_USER = config['ERROR_MESSAGE_FOR_USER']
-# MANAGER_TELEGRAM_ID = config['MANAGER_TELEGRAM_ID']
-# MIN_ASPECT_RATIO=float(config['MIN_ASPECT_RATIO'])
-# MAX_ASPECT_RATIO=1/MIN_ASPECT_RATIO
-# BLURR_THRESHOLD=float(config['BLURR_THRESHOLD'])
-# FORMAT_FOR_CONVERSION = config['BLURR_THRESHOLD']
  
-# Создаем бота и диспетчер
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
-
 
 # Состояния
 class OrderStates(StatesGroup):
@@ -217,13 +203,60 @@ async def check_blur(img_path, message):
 async def process_photo_document(message: types.Message, state: FSMContext):
     await process_photo(message, state, is_document=True)
 
-# Хэндлер для получения фотографий как изображения
-@dp.message(F.content_type.in_({"photo"}), OrderStates.waiting_for_photos)
-async def process_photo_image(message: types.Message, state: FSMContext):
-    await process_photo(message, state, is_document=False)
 
+# Хэндлер для получения фотографий как изображения, но не как файл
+@dp.message(F.content_type.in_({"photo"}), OrderStates.waiting_for_photos)
+async def handle_photo_as_image(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    order_number = data['order_number']
+    ignore_warning = data.get('ignore_quality_warning', False)
+    
+    # Сохраняем данные фото в состояние, чтобы использовать позже при обработке callback
+    # await state.update_data(last_photo=message.photo[-1].file_id)
+    await state.update_data(last_photo_id=message.photo[-1].file_id)
+
+
+    # Проверяем, показывать ли предупреждение о качестве
+    if not ignore_warning:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="Продолжить", callback_data=f"continue_upload:{order_number}"),
+                    InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}"),
+                    InlineKeyboardButton(text="Больше не спрашивать", callback_data=f"ignore_warning:{order_number}")
+                ]
+            ]
+        )
+        await message.answer(
+            "Вы отправили фото не файлом, а изображением. Качество будет хуже.\nВыберите действие:",
+            reply_markup=keyboard
+        )
+    else:
+        await process_photo(message, state, is_document=False)
+
+
+# Обработчик кнопки "Продолжить"
+@dp.callback_query(F.data.startswith("continue_upload"))
+async def continue_upload(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer("Продолжаю загрузку.")
+    await process_photo(callback.message, state, is_document=False)
+
+# Обработчик кнопки "Больше не спрашивать"
+@dp.callback_query(F.data.startswith("ignore_warning"))
+async def ignore_warning(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(ignore_quality_warning=True)
+    await callback.answer("Больше не буду предупреждать.")
+
+    # Получаем file_id фото из состояния
+    data = await state.get_data()
+    photo_file_id = data.get('last_photo_id')
+    
+    if photo_file_id:
+        await process_photo(callback.message, state, is_document=False, photo_file_id=photo_file_id)
+ 
+        
 # Общая функция для обработки фотографии, учитывая её тип
-async def process_photo(message: types.Message, state: FSMContext, is_document: bool):
+async def process_photo(message: types.Message, state: FSMContext, is_document: bool, photo_file_id=None):
     # Получаем данные о состоянии
     data = await state.get_data()
     order_folder = Path(data['order_folder'])
@@ -231,8 +264,14 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
     order_number = data['order_number']
 
     # Получаем максимальное фото для photo и документ, если передан
-    file = message.document if is_document else message.photo[-1]
-
+    if is_document:
+        file = message.document
+    elif photo_file_id:
+        file = photo_file_id  # Используем file_id напрямую
+    else:
+        file = message.photo[-1].file_id
+        
+        
     if file:
         file_id = file.file_id
         original_filename = file.file_name if is_document else f"photo_{int(time() * 1000)}.jpg"
@@ -440,25 +479,6 @@ async def cancel_last_photo(callback: CallbackQuery, state: FSMContext):
         await bot.send_message(callback.message.chat.id, f'Ожидаю фотографий.')
     # callback.answer()
      
-        
-@dp.message(F.content_type.in_({"text", 'photo'}), OrderStates.waiting_for_photos)
-async def process_photo_wrong_type(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    order_number = data['order_number']
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                # TODO InlineKeyboardButton(text="Продолжить", callback_data=f"cancel_order:{order_number}"),  # TODO
-                InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}"),
-                # TODO InlineKeyboardButton(text="Больше не спрашивать", callback_data=f"cancel_order:{order_number}") # TODO
-            ]
-        ]
-    )
-    await message.answer("Вы отправили фото не файлом, а изображением. Качество будет хуже.\n"
-                         f"Продолжить/Отменить/Больше не спрашивать",
-                         reply_markup=keyboard)
-    logger.info(f"User {message.from_user.id} sent an image not as file.")
-
 
 # Хэндлер для обработки callback "Отправить в печать"
 @dp.callback_query(F.data.startswith("print_order:"))
