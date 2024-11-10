@@ -339,11 +339,10 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
     # Подтверждаем обработку коллбека
     await callback.answer()
 
-# Пример использования
+
 @dp.callback_query(F.data.startswith("edit_photo_block"))
 async def handle_edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
     await edit_photo_block(callback, state)
-
 
 
 @dp.callback_query(F.data.startswith("send_not_full_order:"))
