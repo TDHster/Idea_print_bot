@@ -222,11 +222,13 @@ async def handle_photo_as_image(message: types.Message, state: FSMContext):
             inline_keyboard=[
                 [
                     InlineKeyboardButton(text="Продолжить", callback_data=f"continue_upload:{order_number}"),
-                    InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}"),
+                    InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}")
+                ],
+                [
                     InlineKeyboardButton(text="Больше не спрашивать", callback_data=f"ignore_warning:{order_number}")
                 ]
             ]
-        )
+        )    
         await message.answer(
             "Вы отправили фото не файлом, а изображением. Качество будет хуже.\nВыберите действие:",
             reply_markup=keyboard
@@ -236,10 +238,25 @@ async def handle_photo_as_image(message: types.Message, state: FSMContext):
 
 
 # Обработчик кнопки "Продолжить"
+# Обработчик кнопки "Продолжить"
 @dp.callback_query(F.data.startswith("continue_upload"))
 async def continue_upload(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer("Продолжаю загрузку.")
-    await process_photo(callback.message, state, is_document=False)
+    
+    # Проверим, есть ли фото в callback.message
+    if callback.message.photo:
+        await process_photo(callback.message, state, is_document=False)
+    else:
+        # Если фото нет, нужно взять его из состояния (если оно было сохранено ранее)
+        data = await state.get_data()
+        photo_file_id = data.get('last_photo_id')
+        
+        if photo_file_id:
+            # Если photo_file_id есть, передаем его для обработки
+            await process_photo(callback.message, state, is_document=False, photo_file_id=photo_file_id)
+        else:
+            await callback.message.answer("Ошибка: не найдено фото для загрузки.")
+
 
 # Обработчик кнопки "Больше не спрашивать"
 @dp.callback_query(F.data.startswith("ignore_warning"))
@@ -253,8 +270,8 @@ async def ignore_warning(callback: types.CallbackQuery, state: FSMContext):
     
     if photo_file_id:
         await process_photo(callback.message, state, is_document=False, photo_file_id=photo_file_id)
- 
-        
+                
+# Общая функция для обработки фотографии, учитывая её тип
 # Общая функция для обработки фотографии, учитывая её тип
 async def process_photo(message: types.Message, state: FSMContext, is_document: bool, photo_file_id=None):
     # Получаем данные о состоянии
@@ -263,41 +280,47 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
     number_of_photos = data['number_of_photos']
     order_number = data['order_number']
 
-    # Получаем максимальное фото для photo и документ, если передан
+    # Получаем файл в зависимости от типа сообщения или переданного file_id
     if is_document:
         file = message.document
     elif photo_file_id:
-        file = photo_file_id  # Используем file_id напрямую
+        file = photo_file_id  # Используем переданный photo_file_id напрямую
     else:
-        file = message.photo[-1].file_id
-        
-        
-    if file:
+        file = message.photo[-1].file_id  # Используем последнее фото, если передан массив фотографий
+
+    # Скачиваем файл
+    if isinstance(file, str):  # Если file - это строка (photo_file_id), обрабатываем его как есть
+        file_id = file
+        original_filename = f"photo_{int(time() * 1000)}.jpg"  # Задаем имя, если файл передан как photo_file_id
+    else:
         file_id = file.file_id
         original_filename = file.file_name if is_document else f"photo_{int(time() * 1000)}.jpg"
-        filename_with_unique = generate_unique_filename(original_filename)
-        file_path = order_folder / filename_with_unique
 
-        # Скачиваем и сохраняем файл
-        await download_and_save_file(file_id, file_path)
+    # Генерируем уникальное имя для файла
+    filename_with_unique = generate_unique_filename(original_filename)
+    file_path = order_folder / filename_with_unique
 
-        # Конвертируем, если это необходимо
-        img_path = convert_to_jpeg(file_path)
-        if not img_path.exists():
-            logger.error(f"File {img_path} doesn't exist after image conversion.")
-            return
+    # Скачиваем и сохраняем файл
+    await download_and_save_file(file_id, file_path)
 
-        # Обрабатываем фотографию
-        uploaded_photos = await process_image(img_path, order_folder, order_number, number_of_photos, message)
+    # Конвертируем, если это необходимо
+    img_path = convert_to_jpeg(file_path)
+    if not img_path.exists():
+        logger.error(f"File {img_path} doesn't exist after image conversion.")
+        return
 
-        # Проверяем совпадения по MD5
-        await check_md5_matches(img_path, order_folder, message)
+    # Обрабатываем фотографию
+    uploaded_photos = await process_image(img_path, order_folder, order_number, number_of_photos, message)
+
+    # Проверяем совпадения по MD5
+    await check_md5_matches(img_path, order_folder, message)
 
     # Проверяем, завершен ли процесс загрузки фотографий
     if uploaded_photos >= number_of_photos:
         await state.set_state(OrderStates.order_complete)
-
         logger.info(f"All photos for order {order_number} by {message.from_user.id} uploaded.")
+        
+        # Клавиатура с вариантами действий
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -306,10 +329,11 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
                 ]
             ]
         )
-        await message.answer(f"Заказ сформирован. Отправляю в печать или ещё подумаете?",
-                             reply_markup=keyboard)
+        await message.answer(f"Заказ сформирован. Отправляю в печать или ещё подумаете?", reply_markup=keyboard)
     else:
-        await message.answer(f"Жду еще фото.")
+        await message.answer("Жду ещё фото.", reply_markup=generate_photo_keyboard(order_number, uploaded_photos))
+
+
 
 
 def generate_photo_keyboard(order_number: str, uploaded_photos: int) -> InlineKeyboardMarkup:
