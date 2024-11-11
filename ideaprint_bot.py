@@ -6,7 +6,7 @@ import shutil
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputFile, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -387,14 +387,15 @@ def generate_photo_block_keyboard(order_number: str, uploaded_photos: int) -> In
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-@dp.callback_query(F.data.startswith("edit_photo"))
+@dp.callback_query(F.data.startswith("edit_photo:"))
 async def handle_edit_photo(callback: types.CallbackQuery, state: FSMContext):
     # Разбираем callback данные
     _, order_number = callback.data.split(":")
 
     # Получаем данные о состоянии
     data = await state.get_data()
-    uploaded_photos = data['uploaded_photos']
+    order_folder = data['order_folder']
+    uploaded_photos = get_number_photo_files(order_folder)
 
     # Генерируем клавиатуру с кнопками для выбора блока фотографий
     photo_block_keyboard = generate_photo_block_keyboard(order_number, uploaded_photos)
@@ -414,7 +415,7 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
     # Получаем данные о состоянии
     data = await state.get_data()
     order_folder = data['order_folder']
-    uploaded_photos = data['uploaded_photos']
+    uploaded_photos = get_number_photo_files(order_folder)
 
     # Вычисляем диапазон фотографий для текущего блока
     block_size = 10
@@ -424,6 +425,7 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
     # Получаем список файлов в каталоге, отсортированный по имени (по времени загрузки)
     photo_files = sorted(order_folder.glob("*.jpg"))
 
+    print(f'{start_photo=}, {end_photo=}\n{photo_files=}')
     # Отправляем фотографии и информацию о них
     for i in range(start_photo - 1, end_photo):
         if i >= len(photo_files):
@@ -446,7 +448,7 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
             f"Качество: {blur:.2f}\n"
             f"Совпадения по MD5: {', '.join(matches) if matches else 'Нет'}"
         )
-
+        logger.info(f'Order {order_number}, edit photo: {file_info}')
         # Создаем клавиатуру с кнопкой "удалить фото"
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -457,8 +459,20 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
         )
 
         # Отправляем фотографию и информацию
-        with photo_path.open("rb") as photo_file:
-            await callback.message.answer_photo(photo_file, caption=file_info, reply_markup=keyboard)
+        # with photo_path.open("rb") as photo_file:
+            # await callback.message.answer_photo(InputFile(photo_file), caption=file_info, reply_markup=keyboard)
+        # await callback.message.answer_photo(InputFile(photo_path), caption=file_info, reply_markup=keyboard)
+        # photo_file = InputFile(str(photo_path))  # Преобразуем путь в строку
+        # await callback.message.answer_photo(str(photo_path), caption=file_info, reply_markup=keyboard)
+        # photo_file = InputFile(str(photo_path))  # Создаем объект InputFile
+        # await callback.message.answer_photo(photo_file, caption=file_info, reply_markup=keyboard)
+        # Открываем файл и передаем объект в InputFile
+        # with open(str(photo_path), 'rb') as file:
+        #     photo_file = FSInputFile(file)
+        #     await callback.message.answer_photo(photo_file, caption=file_info, reply_markup=keyboard)
+        photo_file = FSInputFile(str(photo_path))  
+        await callback.message.answer_photo(photo_file, caption=file_info, reply_markup=keyboard)
+
 
     # Подтверждаем обработку коллбека
     await callback.answer()
