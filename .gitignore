@@ -3,3 +3,4 @@ venv
 orders/*
 C:*
 __pycache__/*
+buffer.tmp
