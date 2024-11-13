@@ -1,4 +1,4 @@
-# main.py
+# ideaprint_bot.py
 import asyncio
 import aiohttp
 import logging
@@ -165,7 +165,7 @@ async def download_and_save_file(file_id, file_path):
 # Функция для обработки фотографии
 async def process_image(img_path, order_folder, order_number, number_of_photos, message):
     uploaded_photos = get_number_photo_files(order_folder)
-    logger.info(f"Photo saved for user {message.from_user.id} at {img_path}. {uploaded_photos} of {number_of_photos} uploaded.")
+    # logger.info(f"Photo saved for user {message.from_user.id} at {img_path}. {uploaded_photos} of {number_of_photos} uploaded.")
     
     await check_aspect_ratio(img_path, message)
     await check_blur(img_path, message)
@@ -174,7 +174,9 @@ async def process_image(img_path, order_folder, order_number, number_of_photos, 
 
 # Функция для проверки и отправки сообщений о совпадениях по MD5
 async def check_md5_matches(img_path, order_folder, message):
+    logger.info(f'MD5 matches start {img_path}...')
     matches = find_matching_files_by_md5(order_folder, img_path)
+    logger.info(f'MD5 matches end {img_path}...')
     if matches:
         await message.answer(
             f'Загруженное фото совпадает с предыдущими {matches}',
@@ -208,7 +210,23 @@ async def check_blur(img_path, message):
 # Хэндлер для получения фотографий как документ  OrderStates.waiting_for_photos
 @dp.message(F.content_type.in_({"document"}), OrderStates.waiting_for_photos)
 async def process_photo_document(message: types.Message, state: FSMContext):
-    await process_photo(message, state, is_document=True)
+    processing_message = await message.answer("Идет обработка...")
+    
+    # Создаем задачу для process_photo
+    task = asyncio.create_task(process_photo(message, state, is_document=True))
+    
+    try:
+        # Ожидаем завершения задачи
+        await asyncio.gather(task)
+    except Exception as e:
+        # Обрабатываем исключение
+        await message.answer(f"Произошла ошибка при обработке: {e}")
+    finally:
+        # Удаляем сообщение "Идет обработка..."
+        await processing_message.delete()
+    
+    # Отправляем сообщение о завершении обработки
+    # await message.answer("Обработка завершена!")
 
 
 # Хэндлер для получения фотографий как изображения, но не как файл
@@ -295,6 +313,7 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
         file = message.photo[-1].file_id  # Используем последнее фото, если передан массив фотографий
 
     # Скачиваем файл
+    # logger.info(f'{file} Начинаю скачивание...')
     if isinstance(file, str):  # Если file - это строка (photo_file_id), обрабатываем его как есть
         file_id = file
         original_filename = f"photo_{int(time() * 1000)}.jpg"  # Задаем имя, если файл передан как photo_file_id
@@ -305,27 +324,52 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
     # Генерируем уникальное имя для файла
     filename_with_unique = generate_unique_filename(original_filename)
     file_path = order_folder / filename_with_unique
+    # logger.info(f'Unique name {filename_with_unique}')
 
     # Скачиваем и сохраняем файл
+
+    logger.info(f'Start downloading {filename_with_unique}...')
     await download_and_save_file(file_id, file_path)
+    logger.info(f'Downloaded {filename_with_unique}')
 
     # Конвертируем, если это необходимо
+    # logger.info(f'Converting {filename_with_unique}')
     img_path = convert_to_jpeg(file_path)
     if not img_path.exists():
         logger.error(f"File {img_path} doesn't exist after image conversion.")
         return
 
     # Обрабатываем фотографию
+    # logger.info(f'process_image {filename_with_unique}...')
     uploaded_photos = await process_image(img_path, order_folder, order_number, number_of_photos, message)
 
     # Проверяем совпадения по MD5
+    # logger.info(f'md5 matches {filename_with_unique}...')
     await check_md5_matches(img_path, order_folder, message)
 
     # Проверяем, завершен ли процесс загрузки фотографий
     if uploaded_photos >= number_of_photos:
         await state.set_state(OrderStates.order_complete)
         logger.info(f"All photos for order {order_number} by {message.from_user.id} uploaded.")
+
+        if uploaded_photos >= number_of_photos:
+            # Повторные проверки на соотношение сторон, качество и дубли
+            for photo in order_folder.glob("*.{IMG_WORK_FORMAT}"):
+                await check_aspect_ratio(photo, message)
+                await check_blur(photo, message)
+                await check_md5_matches(photo, order_folder, message)
         
+        # TODO Делает проверку aspect ratio, качества, наличия дублей еще раз и выдает предупреждение
+        edit_cancel_send_keyboard = generate_edit_cancel_send_keyboard(order_number)
+        await message.answer(f"Заказ сформирован. Отправляю в печать или ещё подумаете?", 
+                             reply_markup=edit_cancel_send_keyboard)
+    else:
+
+        edit_keyboard = generate_edit_photo_keyboard(order_number)
+        await message.answer(f"Получил {uploaded_photos} фото из {number_of_photos}. Жду ещё", reply_markup=edit_keyboard)
+
+
+def generate_edit_cancel_send_keyboard(order_number):
         # Клавиатура с вариантами действий
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -338,11 +382,6 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
                 ]
             ]
         )
-        await message.answer(f"Заказ сформирован. Отправляю в печать или ещё подумаете?", reply_markup=keyboard)
-    else:
-
-        edit_keyboard = generate_edit_photo_keyboard(order_number)
-        await message.answer(f"Получил {uploaded_photos} фото из {number_of_photos}. Жду ещё", reply_markup=edit_keyboard)
 
 
 def generate_edit_photo_keyboard(order_number: str) -> InlineKeyboardMarkup:
@@ -425,7 +464,7 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
     # Получаем список файлов в каталоге, отсортированный по имени (по времени загрузки)
     photo_files = sorted(order_folder.glob("*.jpg"))
 
-    print(f'{start_photo=}, {end_photo=}\n{photo_files=}')
+    # print(f'{start_photo=}, {end_photo=}\n{photo_files=}')
     # Отправляем фотографии и информацию о них
     for i in range(start_photo - 1, end_photo):
         if i >= len(photo_files):
@@ -458,18 +497,6 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
             ]
         )
 
-        # Отправляем фотографию и информацию
-        # with photo_path.open("rb") as photo_file:
-            # await callback.message.answer_photo(InputFile(photo_file), caption=file_info, reply_markup=keyboard)
-        # await callback.message.answer_photo(InputFile(photo_path), caption=file_info, reply_markup=keyboard)
-        # photo_file = InputFile(str(photo_path))  # Преобразуем путь в строку
-        # await callback.message.answer_photo(str(photo_path), caption=file_info, reply_markup=keyboard)
-        # photo_file = InputFile(str(photo_path))  # Создаем объект InputFile
-        # await callback.message.answer_photo(photo_file, caption=file_info, reply_markup=keyboard)
-        # Открываем файл и передаем объект в InputFile
-        # with open(str(photo_path), 'rb') as file:
-        #     photo_file = FSInputFile(file)
-        #     await callback.message.answer_photo(photo_file, caption=file_info, reply_markup=keyboard)
         photo_file = FSInputFile(str(photo_path))  
         await callback.message.answer_photo(photo_file, caption=file_info, reply_markup=keyboard)
 
@@ -481,7 +508,19 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.startswith("edit_photo_block:"))
 async def handle_edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
     await edit_photo_block(callback, state)
-            
+    _, order_number= callback.data.split(":")
+    data = await state.get_data()
+    order_folder = data['order_folder']
+    number_of_photos = data['number_of_photos']
+    uploaded_photos = get_number_photo_files(order_folder)
+    if uploaded_photos < data['number_of_photos']:
+        edit_keyboard = generate_edit_photo_keyboard(order_number)
+        await bot.send_message(
+                callback.message.chat.id, 
+                f"Получил {uploaded_photos} фото из {number_of_photos}. Жду ещё", 
+                reply_markup=generate_edit_cancel_send_keyboard(order_number)
+            )        
+
 
 @dp.callback_query(F.data.startswith("delete_photo:"))
 async def delete_photo(callback: types.CallbackQuery, state: FSMContext):
@@ -495,7 +534,7 @@ async def delete_photo(callback: types.CallbackQuery, state: FSMContext):
     number_of_photos = data['number_of_photos']
 
     # Получаем список файлов в каталоге, отсортированный по имени (по времени загрузки)
-    photo_files = sorted(order_folder.glob("*.jpg"))
+    photo_files = sorted(order_folder.glob(f"*.{IMG_WORK_FORMAT}"))
 
     # Проверяем, существует ли файл с указанным индексом
     if 1 <= photo_index <= len(photo_files):
@@ -619,7 +658,7 @@ async def process_cancel_order(callback: CallbackQuery, state: FSMContext):
     order_number = callback.data.split(":")[1]
     logger.info(f"Order {order_number} canceled by user {callback.from_user.id}")
     await state.set_state(OrderStates.waiting_for_order_number)
-    await callback.message.answer("Данные заказа сброшены.")
+    # await callback.message.answer("Данные заказа сброшены.")
     await callback.answer()
     data = await state.get_data()
     order_folder = data.get('order_folder')
