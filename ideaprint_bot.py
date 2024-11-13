@@ -140,6 +140,9 @@ async def process_order_number(message: types.Message, state: FSMContext):
         f"<i>Чтобы мессенджер не ухудшил качество фотографии присылайте её в виде файла. Сейчас пришлю инструкцию как это сделать</i>", 
         reply_markup=keyboard_cancel_order
     )
+    if uploaded_photos > 0:
+        await message.answer(f'Уже загружено {uploaded_photos} фотографий.')
+
     await message.answer(SEND_AS_FILE_INSTRUCTION)
     
     await state.set_state(OrderStates.waiting_for_photos)
@@ -359,7 +362,6 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
                 await check_blur(photo, message)
                 await check_md5_matches(photo, order_folder, message)
         
-        # TODO Делает проверку aspect ratio, качества, наличия дублей еще раз и выдает предупреждение
         edit_cancel_send_keyboard = generate_edit_cancel_send_keyboard(order_number)
         await message.answer(f"Заказ сформирован. Отправляю в печать или ещё подумаете?", 
                              reply_markup=edit_cancel_send_keyboard)
@@ -382,6 +384,7 @@ def generate_edit_cancel_send_keyboard(order_number):
                 ]
             ]
         )
+        return keyboard
 
 
 def generate_edit_photo_keyboard(order_number: str) -> InlineKeyboardMarkup:
