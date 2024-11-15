@@ -373,7 +373,7 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
 
 def generate_edit_cancel_send_keyboard(order_number):
         # Клавиатура с вариантами действий
-        keyboard = InlineKeyboardMarkup(
+        return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(text="Редактировать фото", callback_data=f"edit_photo:{order_number}"),
@@ -384,7 +384,6 @@ def generate_edit_cancel_send_keyboard(order_number):
                 ]
             ]
         )
-        return keyboard
 
 
 def generate_edit_photo_keyboard(order_number: str) -> InlineKeyboardMarkup:
