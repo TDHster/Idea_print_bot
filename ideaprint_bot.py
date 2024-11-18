@@ -45,8 +45,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Знаю номер заказа", callback_data=f"entering_order_number"),
-                InlineKeyboardButton(text="+Заказ", callback_data=f"new_order")
+                InlineKeyboardButton(text="Знаю номер заказа", callback_data=f"entering_order_number:"),
+                InlineKeyboardButton(text="+Заказ", callback_data=f"new_order:")
             ]
         ]
     )
@@ -54,9 +54,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
                          "Если вы уже оплатили заказ, то потребуется ввести его номер (можно с пробелами и без).\n"
                          "Для нового заказа нажмите “+Заказ”", 
                          reply_markup=keyboard)
+    await state.set_state(OrderStates.waiting_for_order_number)  # for intercept plain text without button
 
 
-@dp.callback_query(F.data.startswith("entering_order_number"))
+@dp.callback_query(F.data.startswith("entering_order_number:"))
 # async def entering_order_number(message: types.Message, state: FSMContext):
 async def entering_order_number(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.answer("Введите номер вашего заказа:")
@@ -64,10 +65,10 @@ async def entering_order_number(callback_query: types.CallbackQuery, state: FSMC
     await callback_query.answer()
 
 
-@dp.callback_query(F.data.startswith("new_order"))
+@dp.callback_query(F.data.startswith("new_order:"))
 async def new_order(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.answer(ERROR_MESSAGE_FOR_USER)
-    await bot.send_message(callback_query.from_user.id, "Эта функция не реализована. Перезапуск бота.")
+    await bot.send_message(callback_query.from_user.id, "Эта функция не реализована. \nПерезапуск бота.")
     await callback_query.answer()
     await cmd_start(callback_query.message, state)
 
@@ -98,7 +99,7 @@ async def fetch_order_data_via_API(order_number: str) -> tuple:
 # Хэндлер для номера заказа
 @dp.message(OrderStates.waiting_for_order_number)
 async def process_order_number(message: types.Message, state: FSMContext):
-    order_number = message.text.strip().replace(" ", "")  # Удаляем все пробелы.
+    order_number = message.text.strip().replace(" ", "")  # Удаляем все пробелы by ТЗ.
     logger.info(f"User {message.from_user.id} entered order number: {order_number}")
     
     # Получаем данные о заказе
@@ -109,6 +110,7 @@ async def process_order_number(message: types.Message, state: FSMContext):
         logger.error("1C response number_of_photos is None or order_folder is None")
         await message.answer(ERROR_MESSAGE_FOR_USER)
         await state.set_state(OrderStates.waiting_for_order_number)
+        await cmd_start(message, state)
         return
     
     if not str(order_folder).startswith(ALLOWED_PATH):
@@ -116,6 +118,7 @@ async def process_order_number(message: types.Message, state: FSMContext):
         logger.error("1C return not allowed path.")
         await message.answer(ERROR_MESSAGE_FOR_USER)
         await state.set_state(OrderStates.waiting_for_order_number)
+        await cmd_start(message, state)
         return
     
     order_folder.mkdir(parents=True, exist_ok=True)
@@ -125,38 +128,43 @@ async def process_order_number(message: types.Message, state: FSMContext):
     # Сохраняем данные заказа в состоянии
     await state.update_data(order_number=order_number, order_folder=order_folder, 
                             number_of_photos=number_of_photos, uploaded_photos=uploaded_photos)
-    logger.info(f"For order {order_number} folder created: {order_folder}, for {number_of_photos} number of photos.")
+    logger.info(f"Folder created: {order_folder}, for order {order_number} with {number_of_photos} number of photos.")
     
-    keyboard_cancel_order = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}")
-            ]
-        ]
-    )
+
+    if uploaded_photos > 0:
+        await message.answer(f'Для заказа {order_number} уже загружено {uploaded_photos} фотографий.')
+
     await message.answer(
         f"Отправляйте мне фотографии, которые хотите напечатать в альбоме.\n"
         f"У вас {number_of_photos} фотографий для загрузки.\n"
         f"<i>Чтобы мессенджер не ухудшил качество фотографии присылайте её в виде файла. Сейчас пришлю инструкцию как это сделать</i>", 
-        reply_markup=keyboard_cancel_order
+        reply_markup=generate_keyboard_cancel_order()
     )
-    if uploaded_photos > 0:
-        await message.answer(f'Уже загружено {uploaded_photos} фотографий.')
-
     await message.answer(SEND_AS_FILE_INSTRUCTION)
     
     await state.set_state(OrderStates.waiting_for_photos)
 
 
 # Функция для создания клавиатуры отмены
-def create_cancel_keyboard():
+def generate_keyboard_cancel_last_img():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Отменить последнее фото", callback_data="cancel_last_photo"),
+                InlineKeyboardButton(text="Отменить последнее фото", callback_data="cancel_last_photo:"),
             ]
         ]
     )
+
+
+def generate_keyboard_cancel_order(order_number):
+    keyboard_cancel_order = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Отменить заказ", callback_data=f"cancel_order:{order_number}")
+            ]
+        ]
+    )
+    return keyboard_cancel_order
 
 
 # Функция для загрузки и сохранения файла
@@ -187,7 +195,7 @@ async def check_md5_matches(img_path, order_folder, message):
             # , reply_markup=create_cancel_keyboard()
         )
         for match in matches:
-            await message.answer(f'Совпадение с: {match}', reply_markup=create_cancel_keyboard())
+            await message.answer(f'Совпадение с: {match}', reply_markup=generate_keyboard_cancel_last_img())
 
 
 # Функция для проверки aspect ratio и отправки сообщения
@@ -197,7 +205,7 @@ async def check_aspect_ratio(img_path, message):
         await message.answer(
             'Фотография узкая. Мы можем ее напечатать, но при размещении на карточке '
             'будет широкое белое поле. Рекомендуем откадрировать и загрузить снова.',
-            reply_markup=create_cancel_keyboard()
+            reply_markup=generate_keyboard_cancel_last_img()
         )
 
 
@@ -207,7 +215,7 @@ async def check_blur(img_path, message):
     if blur < BLURR_THRESHOLD:
         await message.answer(
             'Изображение на фотографии слишком "размыто".',
-            reply_markup=create_cancel_keyboard()
+            reply_markup=generate_keyboard_cancel_last_img()
         )
 
 
@@ -250,8 +258,13 @@ async def handle_photo_as_image(message: types.Message, state: FSMContext):
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="Продолжить", callback_data=f"continue_upload:{order_number}"),
-                    InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}")
+                    InlineKeyboardButton(text="Продолжить", callback_data=f"continue_upload:{order_number}")
+                ],
+                [
+                    InlineKeyboardButton(text="Отменить фото", callback_data=f"cancel_photo_as_photo:{order_number}")
+                ],
+                [
+                    InlineKeyboardButton(text="Отменить заказ", callback_data=f"cancel_order:{order_number}")
                 ],
                 [
                     InlineKeyboardButton(text="Больше не спрашивать", callback_data=f"ignore_warning:{order_number}")
@@ -264,6 +277,32 @@ async def handle_photo_as_image(message: types.Message, state: FSMContext):
         )
     else:
         await process_photo(message, state, is_document=False)
+
+
+# Хэндлер для получения непонятного в режиме ожидания фотографий
+@dp.message(OrderStates.waiting_for_photos)
+async def handle_photo_as_unknown(message: types.Message, state: FSMContext):
+        data = await state.get_data()
+        order_number = data['order_number']
+        await message.answer(
+            "Пожалуйста, присылайте изображения.",
+            reply_markup=generate_keyboard_cancel_order(order_number)
+        )
+
+
+@dp.callback_query(F.data.startswith("continue_upload:"))
+async def cancel_photo_as_photo(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    order_number = data['order_number']
+    # order_number = callback.data.split(":")[1]
+    order_folder = data['order_folder']
+    photos_in_order = data['number_of_photos']
+    uploaded_photos  = get_number_photo_files(order_folder)
+    
+    await callback.answer("Фото отменено.")
+    edit_keyboard = generate_edit_photo_keyboard(order_number)
+    await bot.send_message(callback.message.chat.id, 
+                           f"Загружено {uploaded_photos} фото из {photos_in_order}.\nЖду ещё", reply_markup=edit_keyboard)
 
 
 # Обработчик кнопки "Продолжить"
@@ -372,13 +411,15 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
         await message.answer(f"Получил {uploaded_photos} фото из {number_of_photos}. Жду ещё", reply_markup=edit_keyboard)
 
 
-def generate_edit_cancel_send_keyboard(order_number):
+def generate_edit_cancel_send_keyboard(order_number): 
         # Клавиатура с вариантами действий
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="Редактировать фото", callback_data=f"edit_photo:{order_number}"),
-                    InlineKeyboardButton(text="Отменить", callback_data=f"cancel_order:{order_number}")
+                    InlineKeyboardButton(text="Редактировать фото", callback_data=f"edit_photo:{order_number}")
+                ],
+                [
+                    InlineKeyboardButton(text="Отменить заказ", callback_data=f"cancel_order:{order_number}")
                 ],
                 [
                     InlineKeyboardButton(text="Отправить в печать", callback_data=f"print_order:{order_number}")
@@ -398,6 +439,12 @@ def generate_edit_photo_keyboard(order_number: str) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="Редактировать фото", callback_data=f"edit_photo:{order_number}")
+            ],
+            [
+                InlineKeyboardButton(text="Отменить заказ", callback_data=f"cancel_order:{order_number}")
+            ],
+            [
+                InlineKeyboardButton(text="Отправить в работу неполный заказ", callback_data=f"send_not_full_order:{order_number}")
             ]
         ]
     )
@@ -422,8 +469,9 @@ def generate_photo_block_keyboard(order_number: str, uploaded_photos: int) -> In
         callback_data = f"edit_photo_block:{order_number}:{block_number}"
         keyboard.append([InlineKeyboardButton(text=button_text, callback_data=callback_data)])
 
-    # Добавляем кнопку "Отменить всё"
     keyboard.append([InlineKeyboardButton(text="Отменить всё", callback_data=f"cancel_order:{order_number}")])
+    keyboard.append([InlineKeyboardButton(text="Отправить в работу неполный заказ", callback_data=f"send_not_full_order:{order_number}")])
+
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -465,7 +513,7 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
     end_photo = min(block_number * block_size, uploaded_photos)
 
     # Получаем список файлов в каталоге, отсортированный по имени (по времени загрузки)
-    photo_files = sorted(order_folder.glob("*.jpg"))
+    photo_files = sorted(order_folder.glob(f"*.{IMG_WORK_FORMAT}"))
 
     # print(f'{start_photo=}, {end_photo=}\n{photo_files=}')
     # Отправляем фотографии и информацию о них
@@ -557,7 +605,7 @@ async def delete_photo(callback: types.CallbackQuery, state: FSMContext):
 
         edit_keyboard = generate_edit_photo_keyboard(order_number)
         await bot.send_message(callback.message.chat.id, 
-            f"Получил {uploaded_photos} фото из {number_of_photos}. Жду ещё", reply_markup=edit_keyboard)
+            f"Загружено {uploaded_photos} фото из {number_of_photos}. Жду ещё", reply_markup=edit_keyboard)
     await callback.answer()
 
 
