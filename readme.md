@@ -13,6 +13,10 @@ The Photo Print Bot is a Telegram bot designed to facilitate the collection and 
 - **Inline Keyboard Integration**: Provides options for users to either send the order for printing or cancel it.
 - **Logging**: Comprehensive logging of user interactions and processes for debugging and tracking purposes.
 
+## Interface prototype
+<img width="807" alt="IdeaPrint bot interface prototype" src="https://github.com/user-attachments/assets/0dd45116-f7ac-4389-aee1-65523a37618b">
+
+
 ## Installation
 
 #### Clone the repository:
