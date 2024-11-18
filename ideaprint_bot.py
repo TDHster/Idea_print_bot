@@ -106,9 +106,10 @@ async def process_order_number(message: types.Message, state: FSMContext):
     number_of_photos, order_folder = await fetch_order_data_via_API(order_number)
     
     if number_of_photos is None or order_folder is None:
+        await message.answer(f"Ошибка.")
         # await message.answer(f"Ошибка программы. Не получен путь к папке заказа или количество фото.")
         logger.error("1C response number_of_photos is None or order_folder is None")
-        await message.answer(ERROR_MESSAGE_FOR_USER)
+        # await message.answer(ERROR_MESSAGE_FOR_USER)
         await state.set_state(OrderStates.waiting_for_order_number)
         await cmd_start(message, state)
         return
@@ -138,7 +139,7 @@ async def process_order_number(message: types.Message, state: FSMContext):
         f"Отправляйте мне фотографии, которые хотите напечатать в альбоме.\n"
         f"У вас {number_of_photos} фотографий для загрузки.\n"
         f"<i>Чтобы мессенджер не ухудшил качество фотографии присылайте её в виде файла. Сейчас пришлю инструкцию как это сделать</i>", 
-        reply_markup=generate_keyboard_cancel_order()
+        reply_markup=generate_keyboard_cancel_order(order_number)
     )
     await message.answer(SEND_AS_FILE_INSTRUCTION)
     
@@ -290,7 +291,7 @@ async def handle_photo_as_unknown(message: types.Message, state: FSMContext):
         )
 
 
-@dp.callback_query(F.data.startswith("continue_upload:"))
+@dp.callback_query(F.data.startswith("cancel_photo_as_photo:"))
 async def cancel_photo_as_photo(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     order_number = data['order_number']
@@ -623,7 +624,9 @@ async def send_not_full_order(callback: CallbackQuery, state: FSMContext):
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="Продолжить загрузку фотографий", callback_data=f"continue_load_photo:{order_number}"),
+                    InlineKeyboardButton(text="Продолжить загрузку фотографий", callback_data=f"continue_load_photo:{order_number}")
+                ],
+                [
                     InlineKeyboardButton(text="Отправить неполный заказ", callback_data=f"print_order:{order_number}")
                 ]
             ]
