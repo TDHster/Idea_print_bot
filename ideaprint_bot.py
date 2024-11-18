@@ -182,8 +182,9 @@ async def check_md5_matches(img_path, order_folder, message):
     logger.info(f'MD5 matches end {img_path}...')
     if matches:
         await message.answer(
-            f'Загруженное фото совпадает с предыдущими {matches}',
-            reply_markup=create_cancel_keyboard()
+            f'Загруженное фото совпадает с предыдущими.'
+            # f'Загруженное фото совпадает с предыдущими {matches}'
+            # , reply_markup=create_cancel_keyboard()
         )
         for match in matches:
             await message.answer(f'Совпадение с: {match}', reply_markup=create_cancel_keyboard())
@@ -266,7 +267,7 @@ async def handle_photo_as_image(message: types.Message, state: FSMContext):
 
 
 # Обработчик кнопки "Продолжить"
-@dp.callback_query(F.data.startswith("continue_upload"))
+@dp.callback_query(F.data.startswith("continue_upload:"))
 async def continue_upload(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer("Продолжаю загрузку.")
     
