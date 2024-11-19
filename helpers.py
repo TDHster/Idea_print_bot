@@ -9,6 +9,7 @@ from pillow_heif import register_heif_opener
 from time import time
 from collections import defaultdict
 from config import *
+import os
 
 print(f'{cv2.__version__=}')
 
@@ -75,21 +76,34 @@ def estimate_blur(image_path):
     :param image_path: Путь к изображению.
     :return: Дисперсия Лапласиана изображения. Чем выше значение, тем более четким считается изображение.
     """
-    # Загружаем изображение в оттенках серого
-    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    # Нормализация пути
+    normalized_path = os.path.normpath(image_path)
+    # Кодирование пути в байты
+    encoded_path = os.fsencode(normalized_path)
     
-    if image is None:
-        raise ValueError(f"Не удалось загрузить изображение по пути: {image_path}")
+    # Проверка существования файла
+    if not os.path.exists(normalized_path):
+        raise FileNotFoundError(f"Файл не найден по пути: {normalized_path}")
     
-    # Применяем оператор Лапласа для вычисления градиента
-    laplacian = cv2.Laplacian(image, cv2.CV_64F)
+    try:
+        # Загружаем изображение в оттенках серого
+        image = cv2.imread(encoded_path.decode('utf-8'), cv2.IMREAD_GRAYSCALE)
+        
+        if image is None:
+            raise ValueError(f"Не удалось загрузить изображение по пути: {normalized_path}")
+        
+        # Применяем оператор Лапласа для вычисления градиента
+        laplacian = cv2.Laplacian(image, cv2.CV_64F)
+        
+        # Вычисляем дисперсию Лапласиана, чем она больше тем больше резких деталей на изображении.
+        variance = laplacian.var()
+        
+        return variance
+    except Exception as e:
+        # logger.error(f"Ошибка при обработке изображения: {normalized_path}, ошибка: {e}")
+        print(f"Ошибка при обработке изображения: {normalized_path}, ошибка: {e}")
+        raise
     
-    # Вычисляем дисперсию Лапласиана, чем она больше тем больше резких деталей на изображении.
-    variance = laplacian.var()
-    
-    return variance
-
-
 def generate_unique_filename(original_filename):
     timestamp = int(time() * 1000)  # Метка времени в миллисекундах
     return f"{timestamp}_{original_filename}"
