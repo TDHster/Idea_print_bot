@@ -12,7 +12,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import dotenv_values
 from pathlib import Path
-import os
+import json
 from time import time
 from helpers import get_aspect_ratio, convert_to_jpeg, estimate_blur, find_matching_files_by_md5, generate_unique_filename, get_original_filename, get_number_photo_files
 from config import *
@@ -74,28 +74,51 @@ async def new_order(callback_query: types.CallbackQuery, state: FSMContext):
 
 
 async def fetch_order_data_via_API(order_number: str) -> tuple:
-    '''
-    # Функция для получения данных о заказе от 1С
-    order_number - номер заказа.
-    return number_of_photos, order_folder or None, None
-    '''
+    """
+    Функция для получения данных о заказе от 1С.
+    :param order_number: Номер заказа.
+    :return: Кортеж (number_of_photos, order_folder) или (None, None), если произошла ошибка.
+    """
     async with aiohttp.ClientSession() as session:
-        async with session.get(f"{API_URL}{order_number}") as response:
-            if response.status == 200:
-                data = await response.json()
-                logger.info(f"API 1c return answer: {data}")
-                
-                if data["result"]:
-                    number_of_photos = data["quantity"]
-                    order_folder = Path(data["path"])
-                    return number_of_photos, order_folder
-                else:
+        try:
+            async with session.get(f"{API_URL}{order_number}") as response:
+                # Логируем HTTP-статус
+                logger.info(f"API 1c responded with status: {response.status}")
+
+                if response.status != 200:
+                    logger.error(f"Unexpected status code: {response.status}")
                     return None, None
-            else:
-                logger.error(f"API 1c return answer: {response.status}")
-                return None, None
 
+                # Обрабатываем ответ, независимо от Content-Type
+                try:
+                    content_type = response.headers.get("Content-Type", "")
+                    if "application/json" in content_type:
+                        data = await response.json()
+                    else:
+                        # Если Content-Type не JSON, пробуем декодировать текст вручную
+                        text = await response.text()
+                        data = json.loads(text)
 
+                    logger.info(f"API 1c returned data: {data}")
+
+                    # Проверяем успешность ответа
+                    if data.get("result"):
+                        number_of_photos = data.get("quantity")
+                        order_folder = Path(data.get("path"))
+                        return number_of_photos, order_folder
+                    else:
+                        logger.warning(f"API 1c error info: {data.get('info', 'No info provided')}")
+                        return None, None
+
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to decode JSON: {e}")
+                    return None, None
+
+        except aiohttp.ClientError as e:
+            logger.error(f"HTTP request to API failed: {e}")
+            return None, None
+        
+        
 # Хэндлер для номера заказа
 @dp.message(OrderStates.waiting_for_order_number)
 async def process_order_number(message: types.Message, state: FSMContext):
