@@ -196,7 +196,8 @@ async def check_md5_matches(img_path, order_folder, message):
             # , reply_markup=create_cancel_keyboard()
         )
         for match in matches:
-            await message.answer(f'Совпадение с: {match}', reply_markup=generate_keyboard_cancel_last_img())
+            match_name = match.name if isinstance(match, Path) else match[0].name
+            await message.answer(f'Совпадение с: {match_name}', reply_markup=generate_keyboard_cancel_last_img())
 
 
 # Функция для проверки aspect ratio и отправки сообщения
@@ -306,25 +307,6 @@ async def cancel_photo_as_photo(callback: types.CallbackQuery, state: FSMContext
                            f"Загружено {uploaded_photos} фото из {photos_in_order}.\nЖду ещё", reply_markup=edit_keyboard)
 
 
-# Обработчик кнопки "Продолжить"
-@dp.callback_query(F.data.startswith("continue_upload:"))
-async def continue_upload(callback: types.CallbackQuery, state: FSMContext):
-    await callback.answer("Продолжаю загрузку.")
-    
-    # Проверим, есть ли фото в callback.message
-    if callback.message.photo:
-        await process_photo(callback.message, state, is_document=False)
-    else:
-        # Если фото нет, нужно взять его из состояния (если оно было сохранено ранее)
-        data = await state.get_data()
-        photo_file_id = data.get('last_photo_id')
-        
-        if photo_file_id:
-            # Если photo_file_id есть, передаем его для обработки
-            await process_photo(callback.message, state, is_document=False, photo_file_id=photo_file_id)
-        else:
-            await callback.message.answer("Ошибка: не найдено фото для загрузки.")
-
 
 # Обработчик кнопки "Больше не спрашивать"
 @dp.callback_query(F.data.startswith("ignore_warning"))
@@ -338,7 +320,31 @@ async def ignore_warning(callback: types.CallbackQuery, state: FSMContext):
     
     if photo_file_id:
         await process_photo(callback.message, state, is_document=False, photo_file_id=photo_file_id)
-              
+   
+   
+# Обработчик кнопки "Продолжить"
+@dp.callback_query(F.data.startswith("continue_upload:"))
+async def continue_upload(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer("Продолжаю загрузку.")
+
+    await bot.send_message(
+        callback.message.chat.id, 
+        '<i>Если в одном сообщении было отправлено несколько фото, загружено только последнее.\nДля загрузки сразу нескольких нажмите "Больше не спрашивать" и повторите отправку.</i>'
+        )
+    
+    # Проверим, есть ли фото в callback.message
+    if callback.message.photo:
+        for photo in callback.message.photo:
+            await process_photo(callback.message, state, is_document=False, photo_file_id=photo.file_id)
+    else:
+        # Если фото нет, нужно взять его из состояния (если оно было сохранено ранее)
+        data = await state.get_data()
+        photo_file_id = data.get('last_photo_id')
+        
+        if photo_file_id:
+            # Если photo_file_id есть, передаем его для обработки
+            await process_photo(callback.message, state, is_document=False, photo_file_id=photo_file_id)
+           
                 
 # Общая функция для обработки фотографии, учитывая её тип
 async def process_photo(message: types.Message, state: FSMContext, is_document: bool, photo_file_id=None):
@@ -360,15 +366,19 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
     # logger.info(f'{file} Начинаю скачивание...')
     if isinstance(file, str):  # Если file - это строка (photo_file_id), обрабатываем его как есть
         file_id = file
-        original_filename = f"photo_{int(time() * 1000)}.jpg"  # Задаем имя, если файл передан как photo_file_id
+        # original_filename = f"photo_{int(time() * 1000)}.jpg"  # Задаем имя, если файл передан как photo_file_id
+        original_filename = f"photo.jpg"  # Задаем имя, если файл передан как photo_file_id
+        logger.info(f'file is instance str {file_id=}, {original_filename=}')
     else:
         file_id = file.file_id
-        original_filename = file.file_name if is_document else f"photo_{int(time() * 1000)}.jpg"
+        # original_filename = file.file_name if is_document else f"photo_{int(time() * 1000)}.jpg"
+        original_filename = file.file_name if is_document else f"photo.jpg"
+        logger.info(f'file is NOT instance str {file_id=}, {original_filename=}')
 
     # Генерируем уникальное имя для файла
     filename_with_unique = generate_unique_filename(original_filename)
     file_path = order_folder / filename_with_unique
-    # logger.info(f'Unique name {filename_with_unique}')
+    logger.info(f'Unique name {filename_with_unique=}')
 
     # Скачиваем и сохраняем файл
 
@@ -410,7 +420,7 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
 
         edit_keyboard = generate_edit_photo_keyboard(order_number)
         await message.answer(f"Получил {uploaded_photos} фото из {number_of_photos}. Жду ещё", reply_markup=edit_keyboard)
-
+        
 
 def generate_edit_cancel_send_keyboard(order_number): 
         # Клавиатура с вариантами действий
@@ -445,13 +455,13 @@ def generate_edit_photo_keyboard(order_number: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Отменить заказ", callback_data=f"cancel_order:{order_number}")
             ],
             [
-                InlineKeyboardButton(text="Отправить в работу неполный заказ", callback_data=f"send_not_full_order:{order_number}")
+                InlineKeyboardButton(text="Отправить в работу", callback_data=f"send_not_full_order:{order_number}")
             ]
         ]
     )
 
 
-def generate_photo_block_keyboard(order_number: str, uploaded_photos: int) -> InlineKeyboardMarkup:
+def generate_photo_block_keyboard(order_number: str, uploaded_photos: int, photos_in_order: int) -> InlineKeyboardMarkup:
     """
     Генерирует клавиатуру с кнопками для выбора блока фотографий для редактирования.
 
@@ -462,6 +472,12 @@ def generate_photo_block_keyboard(order_number: str, uploaded_photos: int) -> In
     keyboard = []
     block_size = 10
     total_blocks = (uploaded_photos + block_size - 1) // block_size  # Округление вверх
+    
+    # data = state.get_data()
+    # order_folder = data['order_folder']
+    # photos_in_order = data['number_of_photos']
+    # uploaded_photos  = get_number_photo_files(order_folder)
+
 
     for block_number in range(1, total_blocks + 1):
         start_photo = (block_number - 1) * block_size + 1
@@ -471,7 +487,11 @@ def generate_photo_block_keyboard(order_number: str, uploaded_photos: int) -> In
         keyboard.append([InlineKeyboardButton(text=button_text, callback_data=callback_data)])
 
     keyboard.append([InlineKeyboardButton(text="Отменить всё", callback_data=f"cancel_order:{order_number}")])
-    keyboard.append([InlineKeyboardButton(text="Отправить в работу неполный заказ", callback_data=f"send_not_full_order:{order_number}")])
+    if uploaded_photos < photos_in_order:
+        keyboard.append([InlineKeyboardButton(text="Отправить в работу неполный заказ", callback_data=f"send_not_full_order:{order_number}")])
+    else:
+        # keyboard.append([InlineKeyboardButton(text="Отправить в печать", callback_data=f"send_not_full_order:{order_number}")])
+        keyboard.append([InlineKeyboardButton(text="Отправить в печать", callback_data=f"print_order:{order_number}")])
 
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -486,9 +506,10 @@ async def handle_edit_photo(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     order_folder = data['order_folder']
     uploaded_photos = get_number_photo_files(order_folder)
+    photos_in_order = data['number_of_photos']
 
     # Генерируем клавиатуру с кнопками для выбора блока фотографий
-    photo_block_keyboard = generate_photo_block_keyboard(order_number, uploaded_photos)
+    photo_block_keyboard = generate_photo_block_keyboard(order_number, uploaded_photos, photos_in_order)
 
     # Отправляем сообщение с клавиатурой
     # await callback.message.answer("Выберите блок фото для редактирования:", reply_markup=photo_block_keyboard)
@@ -560,7 +581,13 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.startswith("edit_photo_block:"))
 async def handle_edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
     await edit_photo_block(callback, state)
-    _, order_number= callback.data.split(":")
+    # _, order_number= callback.data.split(":") was ValueError: too many values to unpack (expected 2)
+    
+    # Разбиваем callback.data на части
+    parts = callback.data.split(":")
+    order_number = parts[1]
+    block_number = parts[2]
+    
     data = await state.get_data()
     order_folder = data['order_folder']
     number_of_photos = data['number_of_photos']
@@ -634,6 +661,8 @@ async def send_not_full_order(callback: CallbackQuery, state: FSMContext):
         await bot.send_message(callback.message.chat.id, 
                                f'У вас ещё не загружено {photos_in_order-uploaded_photos} фотографий. Деньги не возвращаются',
                                reply_markup=keyboard)
+    else:
+        await process_print_order(callback, state)
 
 
 @dp.callback_query(F.data.startswith("continue_load_photo:"))
