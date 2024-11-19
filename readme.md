@@ -1,17 +1,33 @@
-# Photo Print shop helper Bot
+## Photo Print shop helper Bot
 
-## Description
+Idea Print Bot is a Telegram bot designed to streamline the process of collecting and processing photos for orders at the "Idea Print" printing house. The bot allows users to upload photos, check their quality, and manage orders.
 
-The Photo Print Bot is a Telegram bot designed to facilitate the collection and processing of photos for print orders. This bot enables users to upload multiple images simultaneously, convert them into the appropriate format (JPEG), and retrieve their aspect ratios. It provides a user-friendly interface and efficient file handling to streamline the ordering process for print services.
+### Key Features
+#### Photo Collection:
 
-## Features
+Users can upload photos as files or images.
 
-- **Multi-File Upload**: Users can send one or multiple photos in a single message.
-- **Automatic File Conversion**: Uploaded files are automatically converted to JPEG format if they are not already in that format.
-- **Aspect Ratio Calculation**: The bot calculates and displays the aspect ratio of each uploaded image.
-- **State Management**: Utilizes finite state machines to manage the state of the order process.
-- **Inline Keyboard Integration**: Provides options for users to either send the order for printing or cancel it.
-- **Logging**: Comprehensive logging of user interactions and processes for debugging and tracking purposes.
+The bot automatically checks the quality of the photos, including aspect ratio and blurriness.
+
+#### Order Management:
+
+Users can enter their order number to access and manage their order.
+
+The bot provides a user-friendly interface for editing, deleting, and reviewing uploaded photos.
+
+#### Quality Control:
+
+The bot checks for duplicate photos using MD5 hash comparisons.
+
+It also verifies the aspect ratio and blurriness of the photos to ensure print quality.
+
+#### Order Completion:
+
+Once all photos are uploaded and verified, users can mark the order as complete and ready for printing.
+
+The bot sends a notification to the manager when an order is ready for printing.
+
+
 
 ## Interface prototype
 <img width="859" alt="image" src="https://github.com/user-attachments/assets/9472c7b4-7e86-4fa6-a6cd-5a040560874f">
