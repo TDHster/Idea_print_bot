@@ -129,7 +129,7 @@ async def process_order_number(message: types.Message, state: FSMContext):
     number_of_photos, order_folder = await fetch_order_data_via_API(order_number)
     
     if number_of_photos is None or order_folder is None:
-        await message.answer(f"Ошибка.")
+        await message.answer(f"Ошибка.\nЗаказ {order_number} не найден.")
         # await message.answer(f"Ошибка программы. Не получен путь к папке заказа или количество фото.")
         logger.error("1C response number_of_photos is None or order_folder is None")
         # await message.answer(ERROR_MESSAGE_FOR_USER)
