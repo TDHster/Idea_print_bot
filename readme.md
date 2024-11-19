@@ -19,25 +19,35 @@ The Photo Print Bot is a Telegram bot designed to facilitate the collection and 
 
 ## Installation
 
-#### Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/photo-print-bot.git
-Navigate to the project directory:
-```bash
-cd photo-print-bot
-```
-#### Install the required dependencies:
+### Шаг 1: Клонирование репозитория
+git clone https://github.com/TDHster/Idea_print_bot.git
 
-```bash
+cd Idea_print_bot
+
+### Шаг 2: Создание виртуального окружения 
+python -m venv venv
+
+Активируйте виртуальное окружение:
+Для PowerShell:
+.\venv\Scripts\Activate.ps1
+Для командной строки (cmd):
+.\venv\Scripts\activate.bat
+
+### Шаг 3: Установка зависимостей
 pip install -r requirements.txt
-```
-#### Set up your Telegram bot token in the environment variables or configuration file.
 
-Run the bot:
+### Шаг 4: Настройка переменных окружения 
+Создайте файл .env в корневой директории проекта и добавьте необходимые переменные:
 
-```bash
-python bot.py
-```
+BOT_API=
+ALLOWED_PATH=C:\\1C\\
+API_URL = "http://localhost:8000/markets/hs/api_bot/getpath/"
+ERROR_MESSAGE_FOR_USER = "Приношу свои извинения, у нас технический сбой.\nПопробуйте позже или свяжитесь с нашим менеджером по телефону +74951113322"
+MANAGER_TELEGRAM_ID=здесь_цифры_айди_пользователя (можно узнать через @idbot)
+
+### Шаг 5: Запуск бота
+python ideaprint_bot.py
+
 ## Usage
 Once the bot is running, users can start interacting with it through Telegram. They can send their photos for printing, and the bot will handle the rest by saving, converting, and calculating the aspect ratios.
 
