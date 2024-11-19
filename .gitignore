@@ -2,5 +2,6 @@
 venv
 orders/*
 C:*
-__pycache__/*
-buffer.tmp
+__pycache__/
+*.pyc
+*.pyo
