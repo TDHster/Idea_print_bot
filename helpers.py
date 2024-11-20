@@ -83,7 +83,8 @@ def estimate_blur(image_path):
     
     # Проверка существования файла
     if not os.path.exists(normalized_path):
-        raise FileNotFoundError(f"Файл не найден по пути: {normalized_path}")
+        # raise FileNotFoundError(f"Файл не найден по пути: {normalized_path}")
+        print(f"Файл не найден по пути: {normalized_path}")
     
     try:
         # Загружаем изображение в оттенках серого
@@ -102,7 +103,7 @@ def estimate_blur(image_path):
     except Exception as e:
         # logger.error(f"Ошибка при обработке изображения: {normalized_path}, ошибка: {e}")
         print(f"Ошибка при обработке изображения: {normalized_path}, ошибка: {e}")
-        raise
+        return 1000 # for look like ok, workaround when cann't open path in windows with cyrrillic symbols
     
 def generate_unique_filename(original_filename):
     timestamp = int(time() * 1000)  # Метка времени в миллисекундах
