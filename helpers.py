@@ -76,6 +76,8 @@ def estimate_blur(image_path):
     :param image_path: Путь к изображению.
     :return: Дисперсия Лапласиана изображения. Чем выше значение, тем более четким считается изображение.
     """
+    if BLURR_THRESHOLD == 0:
+        return 1000
     # Преобразование пути в объект Path
     path = Path(image_path)
 
