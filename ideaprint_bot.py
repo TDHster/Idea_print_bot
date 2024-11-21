@@ -597,12 +597,13 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
 
         # Формируем текст с информацией о файле
         file_info = (
-            f"Имя файла: {file_name}\n"
+            f"Имя файла: {file_name}\n" +
             # f"Размер: {file_size} байт\n"
-            f"Соотношение сторон: {aspect_ratio:.2f}\n"
-            (f"Качество: {blur:.1f}\n" if BLURR_THRESHOLD != 0 else "")
-            f"Совпадения с другими файлами: {", ".join(map(str, matches)) if matches else "Нет совпадений"}"
+            f"Соотношение сторон: {aspect_ratio:.2f}\n" +
+            (f"Качество: {blur:.1f}\n" if BLURR_THRESHOLD != 0 else "") +
+            f"Совпадения с другими файлами: {', '.join(map(str, matches)) if matches else 'Нет совпадений'}"
         )
+
         logger.info(f'Order {order_number}, edit photo: {file_info}')
         # Создаем клавиатуру с кнопкой "удалить фото"
         keyboard = InlineKeyboardMarkup(
