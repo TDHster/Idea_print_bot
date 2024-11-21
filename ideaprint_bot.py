@@ -581,7 +581,7 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
             # f"Размер: {file_size} байт\n"
             f"Соотношение сторон: {aspect_ratio:.2f}\n"
             f"Качество: {blur:.2f}\n"
-            f"Совпадения с другими файлами: {', '.join(matches) if matches else 'Нет'}"
+            f"Совпадения с другими файлами: {", ".join(map(str, matches)) if matches else "Нет совпадений"}"
         )
         logger.info(f'Order {order_number}, edit photo: {file_info}')
         # Создаем клавиатуру с кнопкой "удалить фото"
