@@ -3,7 +3,7 @@ from dotenv import dotenv_values
 # Загружаем переменные окружения
 config = dotenv_values(".env")
 
-print(f'{config=}')
+# print(f'{config=}')
 
 BOT_TOKEN = config['BOT_API']
 API_URL = config['API_URL']

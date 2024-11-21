@@ -330,7 +330,6 @@ async def cancel_photo_as_photo(callback: types.CallbackQuery, state: FSMContext
                            f"Загружено {uploaded_photos} фото из {photos_in_order}.\nЖду ещё", reply_markup=edit_keyboard)
 
 
-
 # Обработчик кнопки "Больше не спрашивать"
 @dp.callback_query(F.data.startswith("ignore_warning"))
 async def ignore_warning(callback: types.CallbackQuery, state: FSMContext):
@@ -425,22 +424,25 @@ async def process_photo(message: types.Message, state: FSMContext, is_document: 
     await check_md5_matches(img_path, order_folder, message)
 
     # Проверяем, завершен ли процесс загрузки фотографий
-    if uploaded_photos >= number_of_photos:
+    if uploaded_photos == number_of_photos:
         await state.set_state(OrderStates.order_complete)
         logger.info(f"All photos for order {order_number} by {message.from_user.id} uploaded.")
 
-        if uploaded_photos >= number_of_photos:
-            # Повторные проверки на соотношение сторон, качество и дубли
-            for photo in order_folder.glob("*.{IMG_WORK_FORMAT}"):
-                await check_aspect_ratio(photo, message)
-                await check_blur(photo, message)
-                await check_md5_matches(photo, order_folder, message)
+        # Повторные проверки на соотношение сторон, качество и дубли
+        for photo in order_folder.glob("*.{IMG_WORK_FORMAT}"):
+            await check_aspect_ratio(photo, message)
+            await check_blur(photo, message)
+            await check_md5_matches(photo, order_folder, message)
         
         edit_cancel_send_keyboard = generate_edit_cancel_send_keyboard(order_number)
         await message.answer(f"Заказ сформирован. Отправляю в печать или ещё подумаете?", 
                              reply_markup=edit_cancel_send_keyboard)
+    elif uploaded_photos > number_of_photos:
+        only_edit_keyboard = generate_only_edit_photo_keyboard(order_number)
+        await message.answer(f'Вы загрузили фотографий больше чем в заказе.\n'
+                             f'Пожалуйста, нажмите "Редактировать фото" и удалите {uploaded_photos-number_of_photos} фото.', 
+                             reply_markup=only_edit_keyboard)        
     else:
-
         edit_keyboard = generate_edit_photo_keyboard(order_number)
         await message.answer(f"Получил {uploaded_photos} фото из {number_of_photos}. Жду ещё", reply_markup=edit_keyboard)
         
@@ -480,6 +482,24 @@ def generate_edit_photo_keyboard(order_number: str) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="Отправить в работу", callback_data=f"send_not_full_order:{order_number}")
             ]
+        ]
+    )
+
+def generate_only_edit_photo_keyboard(order_number: str) -> InlineKeyboardMarkup:
+    """
+    Генерирует клавиатуру с кнопкой "Редактировать фото".
+
+    :param order_number: Номер заказа.
+    :return: Объект InlineKeyboardMarkup.
+    """
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Редактировать фото", callback_data=f"edit_photo:{order_number}")
+            ],
+            [
+                InlineKeyboardButton(text="Отменить заказ", callback_data=f"cancel_order:{order_number}")
+            ],
         ]
     )
 
@@ -580,7 +600,7 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
             f"Имя файла: {file_name}\n"
             # f"Размер: {file_size} байт\n"
             f"Соотношение сторон: {aspect_ratio:.2f}\n"
-            f"Качество: {blur:.2f}\n"
+            (f"Качество: {blur:.1f}\n" if BLURR_THRESHOLD != 0 else "")
             f"Совпадения с другими файлами: {", ".join(map(str, matches)) if matches else "Нет совпадений"}"
         )
         logger.info(f'Order {order_number}, edit photo: {file_info}')
@@ -595,6 +615,10 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
 
         photo_file = FSInputFile(str(photo_path))  
         await callback.message.answer_photo(photo_file, caption=file_info, reply_markup=keyboard)
+    # await callback.message.answer("", reply_markup=generate_edit_photo_keyboard(order_number))
+    await bot.send_message(
+        callback.message.chat.id, "Доступные действия:", 
+        reply_markup=generate_edit_photo_keyboard(order_number))
 
 
     # Подтверждаем обработку коллбека
