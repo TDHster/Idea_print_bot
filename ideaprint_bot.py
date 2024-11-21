@@ -485,6 +485,7 @@ def generate_edit_photo_keyboard(order_number: str) -> InlineKeyboardMarkup:
         ]
     )
 
+
 def generate_only_edit_photo_keyboard(order_number: str) -> InlineKeyboardMarkup:
     """
     Генерирует клавиатуру с кнопкой "Редактировать фото".
@@ -620,7 +621,6 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
     await bot.send_message(
         callback.message.chat.id, "Доступные действия:", 
         reply_markup=generate_edit_photo_keyboard(order_number))
-
 
     # Подтверждаем обработку коллбека
     await callback.answer()
