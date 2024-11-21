@@ -1,6 +1,7 @@
 python-dotenv
 aiogram
 pillow
+pillow-heif
 aiohttp
 opencv-python
 numpy
