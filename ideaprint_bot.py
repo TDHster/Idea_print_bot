@@ -708,7 +708,7 @@ async def send_not_full_order(callback: CallbackQuery, state: FSMContext):
             ]
         )
         await bot.send_message(callback.message.chat.id, 
-                               f'У вас ещё не загружено {photos_in_order-uploaded_photos} фотографий. Деньги не возвращаются',
+                               f'У вас ещё не загружено {photos_in_order-uploaded_photos} фотографий.\nДеньги не возвращаются',
                                reply_markup=keyboard)
     else:
         await process_print_order(callback, state)
