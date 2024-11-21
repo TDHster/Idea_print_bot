@@ -621,6 +621,7 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
     await bot.send_message(
         callback.message.chat.id, "Доступные действия:", 
         reply_markup=generate_edit_photo_keyboard(order_number))
+    logger.info(f'Show message with edit/cancel keyboard after edit photo block.')
 
     # Подтверждаем обработку коллбека
     await callback.answer()
