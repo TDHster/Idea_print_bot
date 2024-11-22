@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputFile, FSInputFile
+from aiogram.types import ReplyKeyboardRemove, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -474,13 +475,16 @@ def generate_edit_photo_keyboard(order_number: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Редактировать фото", callback_data=f"edit_photo:{order_number}")
+                InlineKeyboardButton(text="Редактировать фото", 
+                                     callback_data=f"edit_photo:{order_number}")
             ],
             [
-                InlineKeyboardButton(text="Отменить заказ", callback_data=f"cancel_order:{order_number}")
+                InlineKeyboardButton(text="Отменить заказ", 
+                                     callback_data=f"cancel_order:{order_number}")
             ],
             [
-                InlineKeyboardButton(text="Отправить в работу", callback_data=f"send_not_full_order:{order_number}")
+                InlineKeyboardButton(text="Отправить в работу неполный заказ",
+                                     callback_data=f"send_not_full_order:{order_number}")
             ]
         ]
     )
@@ -703,13 +707,18 @@ async def send_not_full_order(callback: CallbackQuery, state: FSMContext):
                     InlineKeyboardButton(text="Продолжить загрузку фотографий", callback_data=f"continue_load_photo:{order_number}")
                 ],
                 [
-                    InlineKeyboardButton(text="Отправить неполный заказ", callback_data=f"print_order:{order_number}")
+                    InlineKeyboardButton(text="Отправить заказ", callback_data=f"print_order:{order_number}")
                 ]
             ]
         )
+        keyboard_markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True).add(
+            KeyboardButton('Продолжить загрузку фотографий')  # continue_load_photo:
+            ).add(
+                KeyboardButton('Отправить заказ')  # print_order:      
+            )
         await bot.send_message(callback.message.chat.id, 
                                f'У вас ещё не загружено {photos_in_order-uploaded_photos} фотографий.\nДеньги не возвращаются',
-                               reply_markup=keyboard_inline)
+                               reply_markup=keyboard_markup)
     else:
         await process_print_order(callback, state)
 
@@ -729,6 +738,27 @@ async def continue_load_photo(callback: CallbackQuery, state: FSMContext):
     edit_keyboard = generate_edit_photo_keyboard(order_number)
     await bot.send_message(callback.message.chat.id, 
                            f"Получил {uploaded_photos} фото из {photos_in_order}. Жду ещё", reply_markup=edit_keyboard)
+
+
+@dp.message(Command(commands=["Продолжить загрузку фотографий"]))
+async def continue_load_photo_command(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    order_number = data.get('order_number')
+    order_folder = data['order_folder']
+    photos_in_order = data['number_of_photos']
+    uploaded_photos  = get_number_photo_files(order_folder)
+
+    await state.set_state(OrderStates.waiting_for_photos)
+    # await bot.send_message(callback.message.chat.id, 
+                            # f'Ожидаю фотографии.')
+
+    await bot.send_message(message.chat.id, 
+                           f"Получил {uploaded_photos} фото из {photos_in_order}.",
+                           reply_markup=ReplyKeyboardRemove)
+
+    edit_keyboard = generate_edit_photo_keyboard(order_number)
+    await bot.send_message(message.chat.id, 
+                           f"Жду ещё", reply_markup=edit_keyboard)
 
 
 @dp.callback_query(F.data.startswith("cancel_last_photo:"))
@@ -779,10 +809,25 @@ async def process_print_order(callback: CallbackQuery, state: FSMContext):
     logger.info(f"Order {order_number} marked for printing by user {callback.from_user.id}")
     await callback.message.answer("Заказ отправлен в печать.")
     await callback.answer()
-    await bot.send_message(chat_id=MANAGER_TELEGRAM_ID, text=f"Сообщение менеджеру: Заказ {order_number} собран и подтверджен, надо печатать.")
+    # await bot.send_message(chat_id=MANAGER_TELEGRAM_ID, text=f"Сообщение менеджеру: Заказ {order_number} собран и подтвержден, надо печатать.")
+    await bot.send_message(chat_id=MANAGER_TELEGRAM_ID, text=f"Сообщение менеджеру:\n"
+                           f"Заказ {order_number} собран и подтвержден @{callback.from_user.username}.\nНадо печатать.")
     await state.update_data({}) # Сброс данных состояния    
     await cmd_start(callback.message, state)
-    
+
+
+@dp.message(Command(commands=["Продолжить загрузку фотографий"]))
+async def process_print_order_command(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    order_number = data.get('order_number')
+    logger.info(f"Order {order_number} marked for printing by user {message.from_user.id} {message.from_user.full_name}")
+    await message.reply(f"Заказ {order_number} отправлен в печать.", reply_markup=ReplyKeyboardRemove())
+    await bot.send_message(
+        chat_id=MANAGER_TELEGRAM_ID,
+        text=f"Сообщение менеджеру:\nЗаказ {order_number} собран и подтверджен {message.from_user.username}.\nНадо печатать.")
+    await state.update_data({}) # Сброс данных состояния    
+    await cmd_start(message, state)
+
 
 # Хэндлер для обработки callback "Отменить"
 @dp.callback_query(F.data.startswith("cancel_order:"))
