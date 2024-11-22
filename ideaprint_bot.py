@@ -697,7 +697,7 @@ async def send_not_full_order(callback: CallbackQuery, state: FSMContext):
     # Проверяем, завершен ли процесс загрузки фотографий
     if uploaded_photos < photos_in_order:
         # await state.set_state(OrderStates.order_complete)
-        keyboard = InlineKeyboardMarkup(
+        keyboard_inline = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(text="Продолжить загрузку фотографий", callback_data=f"continue_load_photo:{order_number}")
@@ -709,7 +709,7 @@ async def send_not_full_order(callback: CallbackQuery, state: FSMContext):
         )
         await bot.send_message(callback.message.chat.id, 
                                f'У вас ещё не загружено {photos_in_order-uploaded_photos} фотографий.\nДеньги не возвращаются',
-                               reply_markup=keyboard)
+                               reply_markup=keyboard_inline)
     else:
         await process_print_order(callback, state)
 
