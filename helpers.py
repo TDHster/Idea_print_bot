@@ -64,7 +64,9 @@ def get_aspect_ratio(file_path: Path) -> float:
     """Возвращает соотношение сторон изображения."""
     with Image.open(file_path) as img:
         width, height = img.size
-        aspect_ratio = width / height
+        aspect_ratio = width / height 
+        if aspect_ratio > 1:
+            aspect_ratio = 1 / aspect_ratio
         # print(f"Aspect Ratio: {aspect_ratio:.2f}")
         return aspect_ratio
 
