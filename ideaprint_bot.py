@@ -50,8 +50,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
             ]
         ]
     )
-    await message.answer("Я – бот сборщик заказов типографии <b>Идеяпринт</b>.\n"
-                         "Если вы уже оплатили заказ, то потребуется ввести его номер (можно с пробелами и без).\n"
+    await message.answer("Если вы уже оплатили заказ, то потребуется ввести его номер (можно с пробелами и без).\n"
                          "Для нового заказа нажмите “+Заказ”", 
                          reply_markup=keyboard)
     await state.set_state(OrderStates.waiting_for_order_number)  # for intercept plain text without button
@@ -593,16 +592,34 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
         file_name = photo_path.name
         # file_size = photo_path.stat().st_size
         aspect_ratio = get_aspect_ratio(photo_path)
+        
+        if aspect_ratio < MIN_ASPECT_RATIO:
+            aspect_ratio_message = f'Внимание, фотография слишком узкая/широкая. Будут полосы при печати. Соотношение сторон: {aspect_ratio}\n'
+        else:
+            aspect_ratio_message = ''
+            
         blur = estimate_blur(photo_path)
+        if blur < BLURR_THRESHOLD and BLURR_THRESHOLD != 0:
+            blur_message = f'Фотография слишком размытая. Качество: {blur:.1f}\n'
+        else:
+            blur_message = ''
+            
         matches = find_matching_files_by_md5(order_folder, photo_path)
+        for match in matches:
+            match_name = match.name if isinstance(match, Path) else match[0].name
+        if matches:
+            # match_message = 'Совпадения с другими файлами: ' + ', '.join(map(str, matches))
+            match_message = f'Совпадения с другими файлами: {match_name}'
+        else:
+            match_message = ''
 
         # Формируем текст с информацией о файле
         file_info = (
             f"Имя файла: {file_name}\n" +
             # f"Размер: {file_size} байт\n"
-            f"Соотношение сторон: {aspect_ratio:.2f}\n" +
-            (f"Качество: {blur:.1f}\n" if BLURR_THRESHOLD != 0 else "") +
-            f"Совпадения с другими файлами: {', '.join(map(str, matches)) if matches else 'Нет совпадений'}"
+            f"{aspect_ratio_message}" +
+            f"{blur_message}" +
+            f"{match_message}"
         )
 
         logger.info(f'Order {order_number}, edit photo: {file_info}')

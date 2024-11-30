@@ -14,20 +14,6 @@ import os
 print(f'{cv2.__version__=}')
 
 
-# def convert_to_jpeg(file_path: Path) -> Path:
-    # """Конвертирует изображение в JPEG, если оно в другом формате."""
-    # with Image.open(file_path) as img:
-    #     if img.format != 'JPEG':
-    #         jpeg_path = file_path.with_suffix(".jpg")  # Создаем новый путь с расширением .jpg
-    #         img = img.convert("RGB")  # Конвертируем в RGB для JPEG
-    #         img.save(jpeg_path, "JPEG")
-    #         # print(f"Изображение сохранено в формате JPEG по пути {jpeg_path}")
-    #         return jpeg_path  # Возвращаем путь к новому JPEG файлу
-    #     # print("Изображение уже в формате JPEG, конвертация не требуется.")
-    #     return file_path  # Возвращаем исходный путь, если конвертация не нужна
-
-
-# Регистрируем HEIF/HEIC открыватель в PIL
 register_heif_opener()
 
 def convert_to_jpeg(file_path):
