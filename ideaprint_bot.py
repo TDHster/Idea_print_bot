@@ -238,7 +238,7 @@ async def check_blur(img_path, message):
     blur = estimate_blur(img_path)
     if blur < BLURR_THRESHOLD:
         await message.answer(
-            'Изображение на фотографии слишком "размыто".',
+            'Обратите внимание, фотография расфокусированная. Печатать можно, но рекомендуем заменить.',
             reply_markup=generate_keyboard_cancel_last_img()
         )
 
@@ -600,7 +600,7 @@ async def edit_photo_block(callback: types.CallbackQuery, state: FSMContext):
             
         blur = estimate_blur(photo_path)
         if blur < BLURR_THRESHOLD and BLURR_THRESHOLD != 0:
-            blur_message = f'Фотография слишком размытая. Качество: {blur:.1f}\n'
+            blur_message = f'Обратите внимание, фотография расфокусированная. Печатать можно, но рекомендуем заменить.\n'
         else:
             blur_message = ''
             
