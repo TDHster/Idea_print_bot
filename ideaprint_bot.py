@@ -14,7 +14,8 @@ from dotenv import dotenv_values
 from pathlib import Path
 import json
 from time import time
-from helpers import get_aspect_ratio, convert_to_jpeg, estimate_blur, find_matching_files_by_md5, generate_unique_filename, get_original_filename, get_number_photo_files
+from helpers import get_aspect_ratio, convert_to_jpeg, estimate_blur, find_matching_files_by_md5, \
+    generate_unique_filename, get_original_filename, get_number_photo_files, send_email_async
 from config import *
 
 # Настройка логирования
@@ -22,7 +23,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("main")
  
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
 storage = MemoryStorage()
@@ -797,6 +798,12 @@ async def process_print_order(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer("Заказ отправлен в печать.")
     await callback.answer()
     await bot.send_message(chat_id=MANAGER_TELEGRAM_ID, text=f"Сообщение менеджеру: Заказ {order_number} собран и подтверджен, надо печатать.")
+    if EMAIL_ADDRESS != '': 
+        await send_email_async(
+                                subject=f'Подтвержден заказ {order_number}',
+                                body=f'\nЗагружены фото для печати заказа {order_number} и подтверждена отправка в печать.',
+                                to_email=EMAIL_ADDRESS
+                            )
     await state.update_data({}) # Сброс данных состояния    
     await cmd_start(callback.message, state)
     

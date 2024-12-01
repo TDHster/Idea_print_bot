@@ -5,3 +5,4 @@ pillow-heif
 aiohttp
 opencv-python
 numpy
+aiosmtplib

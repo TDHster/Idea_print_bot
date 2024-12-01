@@ -10,8 +10,15 @@ from time import time
 from collections import defaultdict
 from config import *
 import os
+import aiosmtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import logging
 
-print(f'{cv2.__version__=}')
+
+logger = logging.getLogger("main")
+
+print(f'OpenCV version: {cv2.__version__}')
 
 
 register_heif_opener()
@@ -93,7 +100,6 @@ def get_aspect_ratio(file_path: Path) -> float:
 #         return 1000  # for look like ok, workaround when cann't open path in windows with cyrrillic symbols
 
 
-
 def estimate_blur(image_path):
     """
     Проверяет размытие с использованием pathlib для работы с кириллическими путями.
@@ -161,6 +167,7 @@ def calculate_md5(file_path):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
+
 def find_matching_files_by_md5(directory, target_file=None):
     """
     Ищет файлы с расширением .jpg в указанном каталоге и возвращает список попарных совпадений по MD5.
@@ -192,3 +199,24 @@ def find_matching_files_by_md5(directory, target_file=None):
             matching_pairs.extend([(file_list[i], file_list[j]) for i in range(len(file_list)) for j in range(i + 1, len(file_list))])
 
     return matching_pairs
+
+
+async def send_email_async(subject: str, body: str, to_email: str, use_tls=True):
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = EMAIL_ADDRESS
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        await aiosmtplib.send(
+            message=msg,
+            hostname=SMTP_SERVER,
+            port=SMTP_PORT,
+            username=EMAIL_ADDRESS,
+            password=EMAIL_PASSWORD,
+            use_tls=use_tls
+        )
+        logger.info(f"Email successfully sent to {to_email}")
+    except Exception as e:
+        logger.error(f"Failed to send email to {to_email}: {e}")
