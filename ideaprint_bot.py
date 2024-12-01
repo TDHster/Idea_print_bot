@@ -793,15 +793,35 @@ async def cancel_last_photo(callback: CallbackQuery, state: FSMContext):
 # Хэндлер для обработки callback "Отправить в печать"
 @dp.callback_query(F.data.startswith("print_order:"))
 async def process_print_order(callback: CallbackQuery, state: FSMContext):
-    order_number = callback.data.split(":")[1]   
+    order_number = callback.data.split(":")[1]
+    data = await state.get_data()
+    order_folder = data['order_folder']
+    photos_in_order = data['number_of_photos']
+    uploaded_photos  = get_number_photo_files(order_folder)   
+    
     logger.info(f"Order {order_number} marked for printing by user {callback.from_user.id}")
+    
     await callback.message.answer("Заказ отправлен в печать.")
     await callback.answer()
     await bot.send_message(chat_id=MANAGER_TELEGRAM_ID, text=f"Сообщение менеджеру: Заказ {order_number} собран и подтверджен, надо печатать.")
+    # if "_янд_" in str(order_folder):
+    #     print("Папка связана с Яндексом.")
+    # if "_озн_" in str(order_folder):
+    #     pass
+    for mask, special_manager_telegram_id in ORDER_COMPLETE_SEND_TO.items():
+            if mask in order_folder:
+                await bot.send_message(
+                    chat_id=special_manager_telegram_id, 
+                    text=f"Заказ {order_number} собран и подтверджен, надо печатать.\n" \
+                         f"Путь к заказу {order_folder}\n" \
+                         f"Фото {uploaded_photos} из {photos_in_order}" 
+                    )
+                break
+    
     if EMAIL_ADDRESS != '': 
         await send_email_async(
-                                subject=f'Подтвержден заказ {order_number}',
-                                body=f'\nЗагружены фото для печати заказа {order_number} и подтверждена отправка в печать.',
+                                subject=f'Подтвержден заказ {order_number}, {photos_in_order} фото',
+                                body=f'\nЗагружены {uploaded_photos} фото для печати заказа {order_number} и подтверждена отправка в печать.',
                                 to_email=EMAIL_ADDRESS
                             )
     await state.update_data({}) # Сброс данных состояния    
