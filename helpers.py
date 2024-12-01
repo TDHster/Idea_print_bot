@@ -57,40 +57,67 @@ def get_aspect_ratio(file_path: Path) -> float:
         return aspect_ratio
 
 
+# def estimate_blur_old_v(image_path):
+#     """
+#     Оценивает степень размытия изображения по заданному пути.
+
+#     :param image_path: Путь к изображению.
+#     :return: Дисперсия Лапласиана изображения. Чем выше значение, тем более четким считается изображение.
+#     """
+#     if BLURR_THRESHOLD == 0:
+#         return 1000
+#     # Преобразование пути в объект Path
+#     path = Path(image_path)
+
+#     # Проверка существования файла
+#     if not path.exists():
+#         print(f"Файл не найден по пути: {path}")
+#         return 1000  # for look like ok, workaround when cann't open path in windows with cyrrillic symbols
+
+#     try:
+#         # Загружаем изображение в оттенках серого
+#         image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+
+#         if image is None:
+#             raise ValueError(f"Не удалось загрузить изображение по пути: {path}")
+
+#         # Применяем оператор Лапласа для вычисления градиента
+#         laplacian = cv2.Laplacian(image, cv2.CV_64F)
+
+#         # Вычисляем дисперсию Лапласиана, чем она больше тем больше резких деталей на изображении.
+#         variance = laplacian.var()
+
+#         return variance
+#     except Exception as e:
+#         print(f"Ошибка при обработке изображения: {path}, ошибка: {e}")
+#         return 1000  # for look like ok, workaround when cann't open path in windows with cyrrillic symbols
+
+
+
 def estimate_blur(image_path):
     """
-    Оценивает степень размытия изображения по заданному пути.
-
-    :param image_path: Путь к изображению.
-    :return: Дисперсия Лапласиана изображения. Чем выше значение, тем более четким считается изображение.
+    Проверяет размытие с использованием pathlib для работы с кириллическими путями.
     """
-    if BLURR_THRESHOLD == 0:
+    if BLURR_THRESHOLD == 0:  # workardound for turnoff
         return 1000
-    # Преобразование пути в объект Path
+    
     path = Path(image_path)
 
-    # Проверка существования файла
     if not path.exists():
-        print(f"Файл не найден по пути: {path}")
-        return 1000  # for look like ok, workaround when cann't open path in windows with cyrrillic symbols
+        raise FileNotFoundError(f"Файл {path} не найден!")
 
     try:
-        # Загружаем изображение в оттенках серого
-        image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+        # cv2.imdecode для обработки путей с нелатинскими символами
+        image = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
 
         if image is None:
-            raise ValueError(f"Не удалось загрузить изображение по пути: {path}")
+            raise ValueError(f"Не удалось загрузить изображение: {path}")
 
-        # Применяем оператор Лапласа для вычисления градиента
         laplacian = cv2.Laplacian(image, cv2.CV_64F)
-
-        # Вычисляем дисперсию Лапласиана, чем она больше тем больше резких деталей на изображении.
-        variance = laplacian.var()
-
-        return variance
     except Exception as e:
-        print(f"Ошибка при обработке изображения: {path}, ошибка: {e}")
-        return 1000  # for look like ok, workaround when cann't open path in windows with cyrrillic symbols
+        print(f'Error while calculating blur: {e}')
+        return 1000  # workardound for turnoff
+    return laplacian.var()
         
         
 def generate_unique_filename(original_filename):
