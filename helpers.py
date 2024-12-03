@@ -201,7 +201,7 @@ def find_matching_files_by_md5(directory, target_file=None):
     return matching_pairs
 
 
-async def send_email_async(subject: str, body: str, to_email: str, use_tls=True):
+async def send_email_async(subject: str, body: str, to_email: str, use_tls=SMTP_USE_TLS):
     try:
         msg = MIMEMultipart()
         msg["From"] = EMAIL_ADDRESS
