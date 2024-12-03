@@ -816,7 +816,7 @@ async def process_print_order(callback: CallbackQuery, state: FSMContext):
                          f"Путь к заказу {order_folder}\n" \
                          f"Фото {uploaded_photos} из {photos_in_order}" 
                     )
-                logger.info(f'Sended order complete message to: {special_manager_telegram_id=}')
+                logger.info(f'Sended order complete message to: {special_manager_telegram_id=} for {mask}')
                 break
     
     if EMAIL_ADDRESS != '': 
